@@ -1,0 +1,39 @@
+# FastAPI & server
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+websockets==14.1
+aiofiles==24.1.0
+httpx==0.28.1
+
+# Video download
+yt-dlp==2025.4.30
+
+# Video processing
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+scenedetect[opencv]==0.6.5.2
+librosa==0.10.2
+soundfile==0.12.1
+
+# AI - Whisper (ROCm-optimized)
+# insanely-fast-whisper must be installed with ROCm extras:
+# pip install insanely-fast-whisper torch --index-url https://download.pytorch.org/whl/rocm6.2
+transformers==4.47.1
+accelerate==1.2.1
+
+# AI - Vision (Qwen3-VL via vLLM)
+# vllm must be installed separately with ROCm:
+# pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
+openai==1.57.4  # vLLM exposes OpenAI-compatible API
+
+# Subtitles
+pysubs2==1.7.3
+
+# Utils
+numpy==1.26.4
+pillow==11.0.0
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.7.0
+loguru==0.7.3

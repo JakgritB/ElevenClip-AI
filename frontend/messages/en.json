@@ -1,0 +1,46 @@
+{
+  "nav": { "brand": "ElevenClip AI", "tagline": "AI-Powered Highlight Clipper" },
+  "step1": {
+    "title": "Add Video",
+    "upload_tab": "Upload File",
+    "youtube_tab": "YouTube URL",
+    "drop_hint": "Drag & drop a video file here, or click to select",
+    "youtube_placeholder": "Paste YouTube URL here...",
+    "channel_label": "Channel Description (optional)",
+    "channel_placeholder": "e.g. English gaming channel focused on funny moments and reactions",
+    "fetch_info": "Fetch Info"
+  },
+  "step2": {
+    "title": "Clip Settings",
+    "style_label": "Clip Style",
+    "duration_label": "Target Duration (seconds)",
+    "count_label": "Number of Clips",
+    "clip_lang_label": "Video Language",
+    "sub_lang_label": "Subtitle Language",
+    "mode_label": "Editing Mode",
+    "normal_mode": "Normal Subtitles",
+    "hre_mode": "High-Retention Editing (AI decides)",
+    "hre_hint": "AI will auto-select caption style, apply auto-zoom, silence removal, and TikTok-style cuts."
+  },
+  "step3": {
+    "title": "Subtitle Designer",
+    "font_label": "Font",
+    "size_label": "Font Size",
+    "primary_color": "Primary Color",
+    "secondary_color": "Secondary (Karaoke)",
+    "outline_color": "Outline Color",
+    "shadow_color": "Shadow Color",
+    "outline_size": "Outline Size",
+    "shadow_size": "Shadow Size",
+    "display_mode": "Display Mode",
+    "word_by_word": "Word by Word",
+    "sentence": "Sentence",
+    "animation": "Animation",
+    "alignment": "Alignment",
+    "preview": "Preview"
+  },
+  "generate": { "button": "Generate Clips", "processing": "Processing..." },
+  "styles": { "funny": "Funny", "serious": "Serious", "educational": "Educational", "gaming": "Gaming", "entertainment": "Entertainment" },
+  "animations": { "none": "None", "fade": "Fade", "karaoke": "Karaoke", "pop": "Pop", "typewriter": "Typewriter", "bounce": "Bounce" },
+  "editor": { "title": "Edit Clips", "trim": "Trim", "subtitle_editor": "Subtitle Editor", "timeline": "Timeline", "global_style": "Global Style", "per_line": "Per Line", "download": "Download", "render": "Render & Download" }
+}

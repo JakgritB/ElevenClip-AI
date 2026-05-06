@@ -1,0 +1,10 @@
+{
+  "nav": { "brand": "ElevenClip AI", "tagline": "AI智能剪辑精彩片段" },
+  "step1": { "title": "添加视频", "upload_tab": "上传文件", "youtube_tab": "YouTube链接", "drop_hint": "拖放视频文件到此处，或点击选择", "youtube_placeholder": "粘贴YouTube链接...", "channel_label": "频道描述（可选）", "channel_placeholder": "例如：中文游戏频道，专注于搞笑时刻", "fetch_info": "获取信息" },
+  "step2": { "title": "剪辑设置", "style_label": "剪辑风格", "duration_label": "目标时长（秒）", "count_label": "剪辑数量", "clip_lang_label": "视频语言", "sub_lang_label": "字幕语言", "mode_label": "编辑模式", "normal_mode": "普通字幕", "hre_mode": "高留存率编辑（AI决定）", "hre_hint": "AI将自动选择字幕样式、应用自动缩放、去除静音并进行TikTok风格剪辑。" },
+  "step3": { "title": "字幕设计", "font_label": "字体", "size_label": "字体大小", "primary_color": "主要颜色", "secondary_color": "卡拉OK颜色", "outline_color": "描边颜色", "shadow_color": "阴影颜色", "outline_size": "描边大小", "shadow_size": "阴影大小", "display_mode": "显示模式", "word_by_word": "逐字", "sentence": "句子", "animation": "动画", "alignment": "对齐", "preview": "预览" },
+  "generate": { "button": "生成剪辑", "processing": "处理中..." },
+  "styles": { "funny": "搞笑", "serious": "严肃", "educational": "教育", "gaming": "游戏", "entertainment": "娱乐" },
+  "animations": { "none": "无", "fade": "淡入淡出", "karaoke": "卡拉OK", "pop": "弹出", "typewriter": "打字机", "bounce": "弹跳" },
+  "editor": { "title": "编辑剪辑", "trim": "裁剪", "subtitle_editor": "字幕编辑器", "timeline": "时间轴", "global_style": "全局样式", "per_line": "逐行编辑", "download": "下载", "render": "渲染并下载" }
+}

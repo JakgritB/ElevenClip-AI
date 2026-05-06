@@ -1,0 +1,74 @@
+{
+  "nav": {
+    "brand": "ElevenClip AI",
+    "tagline": "ตัดคลิปไฮไลท์ด้วย AI"
+  },
+  "step1": {
+    "title": "เพิ่มวิดีโอ",
+    "upload_tab": "อัปโหลดไฟล์",
+    "youtube_tab": "YouTube URL",
+    "drop_hint": "ลากไฟล์วิดีโอมาวางที่นี่ หรือคลิกเพื่อเลือก",
+    "youtube_placeholder": "วาง YouTube URL ที่นี่...",
+    "channel_label": "คำอธิบายช่อง (ไม่บังคับ)",
+    "channel_placeholder": "เช่น: ช่องเกมมิ่งภาษาไทย เน้นตลกและ reaction",
+    "fetch_info": "ดึงข้อมูล"
+  },
+  "step2": {
+    "title": "ตั้งค่าคลิป",
+    "style_label": "สไตล์คลิป",
+    "duration_label": "ความยาวโดยประมาณ (วินาที)",
+    "count_label": "จำนวนคลิป",
+    "clip_lang_label": "ภาษาของวิดีโอ",
+    "sub_lang_label": "ภาษาของซับไตเติ้ล",
+    "mode_label": "โหมดการตัด",
+    "normal_mode": "ซับปกติ",
+    "hre_mode": "High-Retention Editing (AI เลือกให้)",
+    "hre_hint": "AI จะเลือกรูปแบบซับ จัด auto-zoom และตัดแบบ TikTok ให้อัตโนมัติ"
+  },
+  "step3": {
+    "title": "ออกแบบซับไตเติ้ล",
+    "font_label": "ฟ้อนต์",
+    "size_label": "ขนาดตัวอักษร",
+    "primary_color": "สีตัวอักษรหลัก",
+    "secondary_color": "สีก่อน Karaoke",
+    "outline_color": "สีขอบ",
+    "shadow_color": "สีเงา",
+    "outline_size": "ขนาดขอบ",
+    "shadow_size": "ขนาดเงา",
+    "display_mode": "รูปแบบการแสดงผล",
+    "word_by_word": "คำต่อคำ",
+    "sentence": "ประโยค",
+    "animation": "แอนิเมชัน",
+    "alignment": "ตำแหน่ง",
+    "preview": "ตัวอย่าง"
+  },
+  "generate": {
+    "button": "สร้างคลิป",
+    "processing": "กำลังประมวลผล..."
+  },
+  "styles": {
+    "funny": "ตลก",
+    "serious": "จริงจัง",
+    "educational": "ให้ความรู้",
+    "gaming": "เกมมิ่ง",
+    "entertainment": "บันเทิง"
+  },
+  "animations": {
+    "none": "ไม่มี",
+    "fade": "Fade",
+    "karaoke": "คาราโอเกะ",
+    "pop": "Pop",
+    "typewriter": "Typewriter",
+    "bounce": "Bounce"
+  },
+  "editor": {
+    "title": "แก้ไขคลิป",
+    "trim": "ปรับขอบเขต",
+    "subtitle_editor": "แก้ไขซับไตเติ้ล",
+    "timeline": "Timeline",
+    "global_style": "สไตล์ทั้งหมด",
+    "per_line": "แก้แต่ละบรรทัด",
+    "download": "ดาวน์โหลด",
+    "render": "Render & ดาวน์โหลด"
+  }
+}
