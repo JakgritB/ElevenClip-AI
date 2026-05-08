@@ -90,15 +90,16 @@ def transcribe(
             model_kwargs={"attn_implementation": "sdpa"},  # PyTorch 2.0 SDPA for ROCm
         )
 
-        generate_kwargs = {
-            "task": task,
-            "return_timestamps": "word",
-            "batch_size": batch_size,
-        }
+        generate_kwargs = {"task": task}
         if clip_lang_code:
             generate_kwargs["language"] = clip_lang_code
 
-        result = pipe(str(audio_path), generate_kwargs=generate_kwargs)
+        result = pipe(
+            str(audio_path),
+            batch_size=batch_size,
+            return_timestamps="word",
+            generate_kwargs=generate_kwargs,
+        )
 
         segments = _build_segments(result, sub_lang_code)
         char_level = sub_lang_code in CHAR_LEVEL_LANGUAGES
