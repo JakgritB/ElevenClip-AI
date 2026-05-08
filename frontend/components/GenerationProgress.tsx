@@ -1,99 +1,130 @@
 "use client";
+import {
+  Download, Music, Film, Mic, Eye, Star, Scissors, Type,
+  CheckCircle2, AlertCircle, Zap, Brain, LucideProps,
+} from "lucide-react";
 
-const STAGES: Record<string, { label: string; icon: string }> = {
-  download:  { label: "ดาวน์โหลดวิดีโอ",    icon: "⬇️" },
-  audio:     { label: "แยกเสียง",            icon: "🎵" },
-  scenes:    { label: "ตรวจจับฉาก",          icon: "🎬" },
-  transcribe:{ label: "ถอดเสียง (Whisper)",  icon: "🎙️" },
-  vision:    { label: "วิเคราะห์ด้วย AI",    icon: "👁️" },
-  scoring:   { label: "คัดเลือกไฮไลท์",     icon: "⭐" },
-  cutting:   { label: "ตัดคลิป",             icon: "✂️" },
-  subtitles: { label: "สร้างซับไตเติ้ล",    icon: "📝" },
-  done:      { label: "เสร็จสิ้น!",          icon: "✅" },
-  error:     { label: "เกิดข้อผิดพลาด",      icon: "❌" },
+type LucideIcon = React.ComponentType<LucideProps>;
+
+const STAGES: Record<string, { en: string; th: string; zh: string; Icon: LucideIcon }> = {
+  download:  { en: "Download Video",    th: "ดาวน์โหลดวิดีโอ",    zh: "下载视频",    Icon: Download },
+  audio:     { en: "Extract Audio",     th: "แยกเสียง",            zh: "提取音频",    Icon: Music },
+  scenes:    { en: "Scene Detection",   th: "ตรวจจับฉาก",          zh: "场景检测",    Icon: Film },
+  transcribe:{ en: "Transcribe",        th: "ถอดเสียง (Whisper)",  zh: "语音转录",    Icon: Mic },
+  vision:    { en: "Vision Analysis",   th: "วิเคราะห์ด้วย AI",    zh: "视觉分析",    Icon: Eye },
+  scoring:   { en: "Highlight Scoring", th: "คัดเลือกไฮไลท์",      zh: "精彩评分",    Icon: Star },
+  cutting:   { en: "Cut Clips",         th: "ตัดคลิป",             zh: "剪切片段",    Icon: Scissors },
+  subtitles: { en: "Generate Subtitles",th: "สร้างซับไตเติ้ล",     zh: "生成字幕",    Icon: Type },
+  done:      { en: "Done!",             th: "เสร็จสิ้น!",          zh: "完成！",      Icon: CheckCircle2 },
+  error:     { en: "Error",             th: "เกิดข้อผิดพลาด",       zh: "错误",        Icon: AlertCircle },
 };
+
+type Lang = "en" | "th" | "zh";
 
 interface Props {
   stage: string;
   pct: number;
   message: string;
+  uiLang?: Lang;
 }
 
-export default function GenerationProgress({ stage, pct, message }: Props) {
-  const info = STAGES[stage] ?? { label: stage, icon: "⚙️" };
+export default function GenerationProgress({ stage, pct, message, uiLang = "en" }: Props) {
+  const info = STAGES[stage] ?? { en: stage, th: stage, zh: stage, Icon: Film };
+  const Icon = info.Icon;
+  const label = uiLang === "th" ? info.th : uiLang === "zh" ? info.zh : info.en;
   const isError = stage === "error";
 
+  const progressLabel = uiLang === "th" ? "ความคืบหน้า" : uiLang === "zh" ? "处理进度" : "Progress";
+
   return (
-    <div className="space-y-6 py-4">
-      {/* AMD GPU badge */}
+    <div className="space-y-4 py-2">
+      {/* AMD badge */}
       <div className="flex items-center justify-center gap-2">
-        <span className="px-3 py-1 bg-orange-500/20 border border-orange-500/40 rounded-full text-xs text-orange-300 font-medium">
-          ⚡ AMD ROCm GPU Processing
+        <span className="px-3 py-1 bg-orange-500/20 border border-orange-500/40 rounded-full text-xs text-orange-300 font-medium flex items-center gap-1.5">
+          <Zap size={12} /> AMD ROCm GPU Processing
         </span>
       </div>
 
       {/* Stage icon + label */}
       <div className="text-center">
-        <div className="text-5xl mb-3">{info.icon}</div>
-        <h3 className="text-lg font-semibold text-white">{info.label}</h3>
+        <div className="flex justify-center mb-2">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+            isError
+              ? "bg-red-500/20"
+              : stage === "done"
+              ? "bg-green-500/20"
+              : "bg-violet-500/20 animate-pulse"
+          }`}>
+            <Icon
+              size={24}
+              className={
+                isError ? "text-red-400"
+                : stage === "done" ? "text-green-400"
+                : "text-violet-300"
+              }
+            />
+          </div>
+        </div>
+        <h3 className="text-lg font-semibold text-white">{label}</h3>
         {message && <p className="text-sm text-white/50 mt-1">{message}</p>}
       </div>
 
       {/* Progress bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-white/40">
-          <span>ความคืบหน้า</span>
+          <span>{progressLabel}</span>
           <span>{pct}%</span>
         </div>
         <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              isError
-                ? "bg-red-500"
-                : pct >= 100
-                ? "bg-green-500"
-                : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500"
+              isError ? "bg-red-500"
+              : pct >= 100 ? "bg-green-500"
+              : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500"
             }`}
             style={{ width: `${pct}%` }}
           />
         </div>
       </div>
 
-      {/* Stage steps */}
+      {/* Stage grid */}
       <div className="grid grid-cols-4 gap-2">
         {Object.entries(STAGES)
           .filter(([k]) => k !== "error")
           .map(([key, val], i, arr) => {
             const stageKeys = arr.map(([k]) => k);
             const currentIdx = stageKeys.indexOf(stage);
-            const thisIdx = i;
-            const done = thisIdx < currentIdx;
-            const active = thisIdx === currentIdx;
+            const done = i < currentIdx;
+            const active = i === currentIdx;
+            const StageIcon = val.Icon;
+            const stageLabel = uiLang === "th" ? val.th : uiLang === "zh" ? val.zh : val.en;
             return (
               <div
                 key={key}
                 className={`text-center p-2 rounded-lg text-xs transition-all ${
-                  done
-                    ? "bg-green-500/20 text-green-300"
-                    : active
-                    ? "bg-violet-500/30 text-violet-200 ring-1 ring-violet-500"
-                    : "bg-white/5 text-white/30"
+                  done   ? "bg-green-500/20 text-green-300"
+                  : active ? "bg-violet-500/30 text-violet-200 ring-1 ring-violet-500"
+                  : "bg-white/5 text-white/30"
                 }`}
               >
-                <div className="text-base">{val.icon}</div>
-                <div className="truncate mt-0.5">{val.label.split(" ")[0]}</div>
+                <div className="flex justify-center mb-0.5">
+                  <StageIcon size={14} />
+                </div>
+                <div className="truncate">{stageLabel.split(" ")[0]}</div>
               </div>
             );
           })}
       </div>
 
-      {/* Multimodal info */}
+      {/* Multimodal info — compact single line */}
       {(stage === "vision" || stage === "transcribe") && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-200 space-y-1">
-          <div className="font-medium">🧠 Multimodal AI กำลังทำงาน</div>
-          <div>• Whisper ROCm — ถอดเสียงแบบ word-level timestamps</div>
-          <div>• Qwen3-VL — วิเคราะห์ frame + transcript พร้อมกัน</div>
-          <div>• librosa — วัดพลังงานเสียงต่อฉาก</div>
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-3 py-2 text-xs text-blue-200 flex items-center gap-2">
+          <Brain size={12} className="shrink-0" />
+          <span>
+            {uiLang === "th" ? "Multimodal AI: Whisper ROCm · Qwen3-VL · librosa"
+             : uiLang === "zh" ? "多模态 AI: Whisper ROCm · Qwen3-VL · librosa"
+             : "Multimodal AI: Whisper ROCm · Qwen3-VL · librosa"}
+          </span>
         </div>
       )}
     </div>
