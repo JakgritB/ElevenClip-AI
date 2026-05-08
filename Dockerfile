@@ -1,9 +1,9 @@
-# ElevenClip AI — HuggingFace Spaces Dockerfile (AMD ROCm)
+# ElevenClip AI — HuggingFace Spaces (AMD ROCm)
 FROM rocm/pytorch:rocm6.3_ubuntu22.04_py3.10_pytorch_release_2.3.0
 
 WORKDIR /app
 
-# System deps
+# System dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
@@ -12,29 +12,33 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# ─── Backend ───────────────────────────────────────────────────
+# ─── Backend Python dependencies ───────────────────────────────────────────
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
-# Install vLLM with ROCm
+# vLLM with ROCm support (installed separately from main requirements)
 RUN pip install --no-cache-dir \
     "vllm>=0.6.0" \
     --extra-index-url https://download.pytorch.org/whl/rocm6.2
 
 COPY backend/ /app/backend/
 
-# ─── Frontend (pre-built) ──────────────────────────────────────
+# ─── Frontend (Next.js) ────────────────────────────────────────────────────
 COPY frontend/package*.json /app/frontend/
 RUN cd /app/frontend && npm ci --production=false
 
 COPY frontend/ /app/frontend/
+
+# API URL is relative (same origin) in production
 ENV NEXT_PUBLIC_API_URL=""
+ENV NEXT_PUBLIC_DEMO_ENABLED="true"
+
 RUN cd /app/frontend && npm run build
 
-# ─── vLLM model cache dir ─────────────────────────────────────
+# ─── Runtime directories ───────────────────────────────────────────────────
 RUN mkdir -p /tmp/elevnclip /root/.cache/huggingface
 
-# ─── Startup script ───────────────────────────────────────────
+# ─── Startup ──────────────────────────────────────────────────────────────
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
