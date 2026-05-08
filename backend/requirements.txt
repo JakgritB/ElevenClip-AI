@@ -9,23 +9,21 @@ httpx==0.28.1
 # Video download
 yt-dlp==2025.4.30
 
-# Video processing
-moviepy==1.0.3
-ffmpeg-python==0.2.0
+# Video processing (ffmpeg called via subprocess — no Python wrapper needed)
 scenedetect[opencv]==0.6.5.2
 librosa==0.10.2
 soundfile==0.12.1
 
-# AI - Whisper (ROCm-optimized)
-# insanely-fast-whisper must be installed with ROCm extras:
-# pip install insanely-fast-whisper torch --index-url https://download.pytorch.org/whl/rocm6.2
+# AI — Whisper STT (ROCm-optimized)
+# PyTorch must be installed separately with ROCm wheels:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
 transformers==4.47.1
 accelerate==1.2.1
 
-# AI - Vision (Qwen3-VL via vLLM)
-# vllm must be installed separately with ROCm:
-# pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
-openai==1.57.4  # vLLM exposes OpenAI-compatible API
+# AI — Vision: Qwen3-VL via vLLM OpenAI-compatible API
+# vLLM installed separately:
+#   pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
+openai==1.57.4
 
 # Subtitles
 pysubs2==1.7.3
