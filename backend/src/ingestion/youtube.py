@@ -33,7 +33,7 @@ def download_video(
     output_template = str(output_dir / f"{session_id}_input.%(ext)s")
 
     ydl_opts = {
-        "format": f"bestvideo[height<={max_height}][ext=mp4]+bestaudio[ext=m4a]/best[height<={max_height}][ext=mp4]/best",
+        "format": f"bestvideo[height<={max_height}]+bestaudio/bestvideo[height<={max_height}]/best[height<={max_height}]/best",
         "outtmpl": output_template,
         "merge_output_format": "mp4",
         "quiet": True,
