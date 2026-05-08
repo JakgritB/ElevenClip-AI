@@ -176,7 +176,7 @@ def generate_subtitles(
             if animation == "karaoke":
                 _add_karaoke_line(subs, words, seg_start, seg_end, clip_start_offset, char_level)
             else:
-                _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config)
+                _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config, clip_start_offset)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     subs.save(str(output_path), encoding="utf-8")
@@ -203,7 +203,7 @@ def _add_sentence_event(subs, text, start, end, animation, style_config):
     subs.append(event)
 
 
-def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config):
+def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config, clip_offset=0.0):
     """Add one SSAEvent per word (word-by-word mode)."""
     unit_list = []
     for w in words:
@@ -214,8 +214,10 @@ def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, sty
             unit_list.append(w)
 
     for i, unit in enumerate(unit_list):
-        start = unit["start"]
-        end = unit["end"] if unit["end"] > unit["start"] else unit["start"] + 0.3
+        start = unit["start"] - clip_offset
+        end = (unit["end"] - clip_offset) if unit["end"] > unit["start"] else start + 0.3
+        if start < 0:
+            continue
 
         tags = ""
         if animation == "fade":

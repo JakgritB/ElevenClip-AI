@@ -11,32 +11,39 @@ def extract_clip(
     end: float,
     output_path: Path,
     use_hw_encode: bool = True,
+    vertical: bool = True,
+    face_bbox: list = None,
 ) -> Path:
-    """Cut a clip from video_path between start and end seconds.
+    """Cut a clip and convert to 9:16 vertical (1080x1920) for TikTok.
 
-    Uses AMD AMF hardware encoder when available, falls back to libx264.
+    face_bbox: [x1, y1, x2, y2] in pixels from Qwen2.5-VL — used to center
+    the crop on the face. Falls back to center crop when None.
+    Uses AMD AMF hardware encoder when available.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Try hardware encoding (AMD AMF/VCE) first
     encoders = ["h264_amf", "libx264"] if use_hw_encode else ["libx264"]
 
+    # 9:16 crop filter: center on face_bbox if available, else center of frame
+    vf_filters = []
+    if vertical:
+        if face_bbox and len(face_bbox) == 4:
+            x1, y1, x2, y2 = face_bbox
+            face_cx = int((x1 + x2) / 2)
+            # crop width = ih * 9/16, centered on face x
+            crop = f"crop=ih*9/16:ih:max(0\\,min(iw-ih*9/16\\,{face_cx}-ih*9/32)):0"
+        else:
+            crop = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0"
+        vf_filters.append(f"{crop},scale=1080:1920")
+
     for encoder in encoders:
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start),
-            "-to", str(end),
-            "-i", str(video_path),
-            "-c:v", encoder,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
-            str(output_path),
-        ]
+        cmd = ["ffmpeg", "-y", "-ss", str(start), "-to", str(end), "-i", str(video_path)]
+        if vf_filters:
+            cmd += ["-vf", ",".join(vf_filters)]
+        cmd += ["-c:v", encoder, "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output_path)]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             if encoder == "h264_amf":
-                logger.info(f"Encoded with AMD AMF: {output_path.name}")
+                logger.info(f"Encoded 9:16 with AMD AMF: {output_path.name}")
             return output_path
         elif encoder == "h264_amf":
             logger.debug("AMD AMF not available, falling back to libx264")
@@ -88,8 +95,9 @@ def extract_all_clips(
     results = []
     for i, clip in enumerate(selected_clips):
         out_path = output_dir / f"{session_id}_clip_{i+1:02d}_raw.mp4"
+        face_bbox = clip.get("vision_analysis", {}).get("face_bbox")
         try:
-            extract_clip(video_path, clip["start"], clip["end"], out_path)
+            extract_clip(video_path, clip["start"], clip["end"], out_path, face_bbox=face_bbox)
             results.append({**clip, "clip_index": i + 1, "clip_path": str(out_path)})
             logger.info(f"Extracted clip {i+1}: {clip['start']:.1f}s–{clip['end']:.1f}s → {out_path.name}")
         except Exception as e:
