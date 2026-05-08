@@ -13,6 +13,7 @@ def extract_clip(
     use_hw_encode: bool = True,
     vertical: bool = True,
     face_bbox: list = None,
+    **kwargs,
 ) -> Path:
     """Cut a clip and convert to 9:16 vertical (1080x1920) for TikTok.
 
@@ -23,17 +24,26 @@ def extract_clip(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     encoders = ["h264_amf", "libx264"] if use_hw_encode else ["libx264"]
 
-    # 9:16 crop filter: center on face_bbox if available, else center of frame
+    # 9:16 vertical conversion filter
     vf_filters = []
     if vertical:
-        if face_bbox and len(face_bbox) == 4:
-            x1, y1, x2, y2 = face_bbox
-            face_cx = int((x1 + x2) / 2)
-            # crop width = ih * 9/16, centered on face x
-            crop = f"crop=ih*9/16:ih:max(0\\,min(iw-ih*9/16\\,{face_cx}-ih*9/32)):0"
+        aspect_mode = kwargs.get("aspect_mode", "crop")
+        if aspect_mode == "letterbox":
+            # Fit entire 16:9 frame into 9:16, black bars top+bottom
+            vf_filters.append(
+                "scale=1080:1920:force_original_aspect_ratio=decrease,"
+                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black"
+            )
         else:
-            crop = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0"
-        vf_filters.append(f"{crop},scale=1080:1920")
+            # Crop: scale to 1920 height first, then center-crop to 1080 wide
+            # Optionally center on face_bbox x when available
+            if face_bbox and len(face_bbox) == 4:
+                x1, _, x2, _ = face_bbox
+                face_cx = int((x1 + x2) / 2)
+                crop = f"scale=-1:1920,crop=1080:1920:max(0\\,min(iw-1080\\,{face_cx}*iw/in_w-540)):0"
+            else:
+                crop = "scale=-1:1920,crop=1080:1920:(iw-1080)/2:0"
+            vf_filters.append(crop)
 
     for encoder in encoders:
         cmd = ["ffmpeg", "-y", "-ss", str(start), "-to", str(end), "-i", str(video_path)]
@@ -90,6 +100,7 @@ def extract_all_clips(
     selected_clips: list[dict],
     output_dir: Path,
     session_id: str,
+    aspect_mode: str = "crop",
 ) -> list[dict]:
     """Extract all selected clips from video. Returns list with added 'clip_path'."""
     results = []
@@ -97,7 +108,7 @@ def extract_all_clips(
         out_path = output_dir / f"{session_id}_clip_{i+1:02d}_raw.mp4"
         face_bbox = clip.get("vision_analysis", {}).get("face_bbox")
         try:
-            extract_clip(video_path, clip["start"], clip["end"], out_path, face_bbox=face_bbox)
+            extract_clip(video_path, clip["start"], clip["end"], out_path, face_bbox=face_bbox, aspect_mode=aspect_mode)
             results.append({**clip, "clip_index": i + 1, "clip_path": str(out_path)})
             logger.info(f"Extracted clip {i+1}: {clip['start']:.1f}s–{clip['end']:.1f}s → {out_path.name}")
         except Exception as e:
@@ -111,9 +122,10 @@ async def extract_all_clips_async(
     selected_clips: list[dict],
     output_dir: Path,
     session_id: str,
+    aspect_mode: str = "crop",
 ) -> list[dict]:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         None,
-        lambda: extract_all_clips(video_path, selected_clips, output_dir, session_id)
+        lambda: extract_all_clips(video_path, selected_clips, output_dir, session_id, aspect_mode)
     )

@@ -140,6 +140,7 @@ class ProcessSettings(BaseModel):
     clip_language: str = "auto"
     subtitle_language: str = "en"
     mode: str = "normal"  # "normal" | "hre"
+    aspect_mode: str = "crop"  # "crop" | "letterbox"
     style_config: dict = {}
 
 class SubtitlePatch(BaseModel):
@@ -270,7 +271,7 @@ async def _run_pipeline(
 
         # ── 7. Extract clips (AMD AMF hardware encoder) ─────────────────
         await send_progress(session_id, "cutting", 81, f"Cutting {len(selected)} clips (h264_amf)...")
-        clips = await extract_all_clips_async(video_path, selected, session_dir, session_id)
+        clips = await extract_all_clips_async(video_path, selected, session_dir, session_id, aspect_mode=settings.aspect_mode)
 
         # ── 8. Subtitles / HRE (all clips in parallel) ─────────────────
         await send_progress(session_id, "subtitles", 86, "Generating subtitles (parallel)...")
