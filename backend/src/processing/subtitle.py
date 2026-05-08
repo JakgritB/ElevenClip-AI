@@ -164,11 +164,11 @@ def generate_subtitles(
 
     for seg in segments:
         words = seg.get("words", [])
-        seg_start = seg["start"] - clip_start_offset
         seg_end = seg["end"] - clip_start_offset
+        if seg_end <= 0:
+            continue  # segment ends before clip starts — skip entirely
 
-        if seg_start < 0:
-            continue
+        seg_start = max(0.0, seg["start"] - clip_start_offset)
 
         if display_mode == "sentence" or not words:
             _add_sentence_event(subs, seg["text"], seg_start, seg_end, animation, style_config)
