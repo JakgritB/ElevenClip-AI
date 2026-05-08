@@ -51,7 +51,7 @@ def _color_to_ass(hex_color: str, alpha: int = 0) -> str:
 
 def build_style(
     font_family: str = "Noto Sans",
-    font_size: int = 52,
+    font_size: int = 72,
     primary_color: str = "#FFFFFF",
     secondary_color: str = "#FFFF00",
     outline_color: str = "#000000",
@@ -62,12 +62,12 @@ def build_style(
     bold: bool = True,
     italic: bool = False,
     underline: bool = False,
-    outline_size: float = 2.5,
-    shadow_size: float = 1.5,
+    outline_size: float = 4.0,
+    shadow_size: float = 2.0,
     alignment: int = 2,  # 2=bottom-center, 8=top-center
-    margin_l: int = 20,
-    margin_r: int = 20,
-    margin_v: int = 40,
+    margin_l: int = 40,
+    margin_r: int = 40,
+    margin_v: int = 120,
     scale_x: int = 100,
     scale_y: int = 100,
     spacing: float = 0.0,
@@ -124,6 +124,8 @@ def generate_subtitles(
         clip_start_offset: Shift all timestamps (for sub-clips from longer video)
     """
     subs = SSAFile()
+    subs.info["PlayResX"] = "1080"
+    subs.info["PlayResY"] = "1920"
     subs.info["ScaledBorderAndShadow"] = "yes"
     subs.info["WrapStyle"] = "0"
 
@@ -136,7 +138,7 @@ def generate_subtitles(
 
     style = build_style(
         font_family=font_family,
-        font_size=style_config.get("font_size", 52),
+        font_size=style_config.get("font_size", 72),
         primary_color=style_config.get("primary_color", "#FFFFFF"),
         secondary_color=style_config.get("secondary_color", "#FFFF00"),
         outline_color=style_config.get("outline_color", "#000000"),
@@ -147,12 +149,12 @@ def generate_subtitles(
         bold=style_config.get("bold", True),
         italic=style_config.get("italic", False),
         underline=style_config.get("underline", False),
-        outline_size=style_config.get("outline_size", 2.5),
-        shadow_size=style_config.get("shadow_size", 1.5),
+        outline_size=style_config.get("outline_size", 4.0),
+        shadow_size=style_config.get("shadow_size", 2.0),
         alignment=style_config.get("alignment", 2),
-        margin_l=style_config.get("margin_l", 20),
-        margin_r=style_config.get("margin_r", 20),
-        margin_v=style_config.get("margin_v", 40),
+        margin_l=style_config.get("margin_l", 40),
+        margin_r=style_config.get("margin_r", 40),
+        margin_v=style_config.get("margin_v", 120),
         scale_x=style_config.get("scale_x", 100),
         scale_y=style_config.get("scale_y", 100),
         spacing=style_config.get("spacing", 0.0),
