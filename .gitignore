@@ -25,6 +25,13 @@ graphify-out/
 .env.local
 .env.*.local
 
+# SSH keys (never commit)
+*.pem
+*_key
+*_key.pub
+id_rsa*
+id_ed25519*
+
 # OS
 .DS_Store
 Thumbs.db

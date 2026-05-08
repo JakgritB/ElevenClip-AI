@@ -6,7 +6,7 @@ Turn any livestream or YouTube video into TikTok-ready highlight clips using **t
 
 [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-yellow)](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ElevenClip-AI)
 [![AMD ROCm](https://img.shields.io/badge/AMD-ROCm%206.3-red)](https://rocm.docs.amd.com/)
-[![Qwen3-VL](https://img.shields.io/badge/Qwen3--VL-7B%20Instruct-blue)](https://huggingface.co/Qwen/Qwen3-VL-7B-Instruct)
+[![Qwen2.5-VL](https://img.shields.io/badge/Qwen2.5--VL-7B%20Instruct-blue)](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
@@ -23,10 +23,10 @@ ElevenClip AI ingests a livestream/YouTube video and automatically finds the bes
 
 | Modality | Model | What it detects |
 |---|---|---|
-| **Vision** | Qwen3-VL-7B on ROCm | Excitement, faces, action type, humor, TikTok potential |
+| **Vision** | Qwen2.5-VL-7B on ROCm | Excitement, faces, action type, humor, TikTok potential |
 | **Audio** | insanely-fast-whisper (ROCm) | Word-level transcript + language detection |
 | **Audio Signal** | librosa | RMS energy → loud/quiet moments |
-| **Vision+Text** | Qwen3-VL (multimodal) | Frame + transcript context fused together |
+| **Vision+Text** | Qwen2.5-VL (multimodal) | Frame + transcript context fused together |
 | **Text** | Qwen3 (text-only) | Style keyword matching, emoji selection |
 
 ### Highlight Scoring Formula
@@ -67,7 +67,7 @@ where:
 └──────────────────────────────────────────────────────────────────┘
            │
            ▼  ← CONCURRENT requests to vLLM ──────────────────────
-┌─ Qwen3-VL Multimodal Analysis ───────────────────────────────────┐
+┌─ Qwen2.5-VL Multimodal Analysis ───────────────────────────────────┐
 │  Input per scene: [frame1] [frame2] [frame3] + transcript text   │
 │  Output: excitement_score, tiktok_potential, face_bbox,          │
 │          emotion, action_type, humor_level, highlight_reason     │
@@ -105,12 +105,12 @@ where:
 ## AMD GPU Optimizations
 
 - **ROCm 6.3** — all model inference on AMD Instinct MI300X
-- **vLLM** — serves Qwen3-VL with continuous batching and PagedAttention
+- **vLLM** — serves Qwen2.5-VL with continuous batching and PagedAttention
 - **SDPA attention** — PyTorch 2.0 Scaled Dot-Product Attention for Whisper (4.45× faster on ROCm)
 - **float16 inference** — 7B model fits in ~14 GB VRAM, leaves 50+ GB for large videos
 - **h264_amf** — AMD VCE hardware encoder for clip extraction (falls back to libx264)
 - **Parallel pipeline** — scene detection (CPU) + Whisper (GPU) run simultaneously
-- **Concurrent vLLM requests** — all scenes sent to Qwen3-VL in parallel; server batches them
+- **Concurrent vLLM requests** — all scenes sent to Qwen2.5-VL in parallel; server batches them
 
 ---
 
@@ -129,7 +129,7 @@ Full creative control over:
 ### High-Retention Editing (HRE)
 AI chooses everything:
 - Silence removal (`ffmpeg silenceremove`)
-- Auto-zoom to face region (`ffmpeg zoompan` using Qwen3-VL face_bbox)
+- Auto-zoom to face region (`ffmpeg zoompan` using Qwen2.5-VL face_bbox)
 - Jump cuts at scene boundaries
 - Qwen3 selects contextually-appropriate emoji overlay
 - Impact 64px bold white captions, word-by-word, pop animation
@@ -152,7 +152,7 @@ AI chooses everything:
 
 | Layer | Technology |
 |---|---|
-| Vision AI | **Qwen3-VL-7B-Instruct** (Apache 2.0) via vLLM |
+| Vision AI | **Qwen2.5-VL-7B-Instruct** (Apache 2.0) via vLLM |
 | Speech-to-Text | **insanely-fast-whisper** with PyTorch SDPA on ROCm |
 | Audio Analysis | **librosa** — RMS energy per scene |
 | Scene Detection | **PySceneDetect** — ContentDetector |
@@ -169,11 +169,11 @@ AI chooses everything:
 ## Local Development
 
 ```bash
-# 1. Start vLLM (Qwen3-VL) — requires AMD GPU with ROCm
+# 1. Start vLLM (Qwen2.5-VL) — requires AMD GPU with ROCm
 pip install torch --index-url https://download.pytorch.org/whl/rocm6.2
 pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
 python -m vllm.entrypoints.openai.api_server \
-  --model Qwen/Qwen3-VL-7B-Instruct \
+  --model Qwen/Qwen2.5-VL-7B-Instruct \
   --port 8001 --device rocm --dtype float16
 
 # 2. Start backend
@@ -195,10 +195,10 @@ For development without a GPU, the pipeline runs with fallback stubs (stubbed Wh
 
 | Requirement | Status |
 |---|---|
-| Track 3: Vision & Multimodal AI | ✅ Qwen3-VL processes frames + audio simultaneously |
+| Track 3: Vision & Multimodal AI | ✅ Qwen2.5-VL processes frames + audio simultaneously |
 | AMD Developer Cloud | ✅ All inference on AMD Instinct MI300X via ROCm 6.3 |
 | ROCm acceleration | ✅ vLLM + SDPA Whisper + h264_amf encoder |
-| Qwen partner integration | ✅ Qwen3-VL as primary vision model, Qwen3 for text/emoji |
+| Qwen partner integration | ✅ Qwen2.5-VL as primary vision model, Qwen3 for text/emoji |
 | HuggingFace Space | ✅ `lablab-ai-amd-developer-hackathon/ElevenClip-AI` |
 | Public GitHub repo | ✅ `JakgritB/ElevenClip-AI` |
 | Ship It challenge | ✅ Social posts tagging @AIatAMD + @lablab |

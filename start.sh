@@ -4,21 +4,19 @@ set -e
 echo "=== ElevenClip AI ==="
 echo "GPU: $(rocm-smi --showproductname 2>/dev/null | grep -v '^$' || echo 'CPU mode')"
 
-# ── Start vLLM (Qwen3-VL) on AMD ROCm ──────────────────────────────────────
+# ── Start vLLM (Qwen2.5-VL) on AMD ROCm ─────────────────────────────────────
 if command -v rocm-smi &> /dev/null; then
-    echo "[1/3] Starting Qwen3-VL via vLLM on AMD ROCm..."
-    python -m vllm.entrypoints.openai.api_server \
-        --model "Qwen/Qwen3-VL-7B-Instruct" \
+    echo "[1/3] Starting Qwen2.5-VL via vLLM on AMD ROCm..."
+    vllm serve "Qwen/Qwen2.5-VL-7B-Instruct" \
         --port 8001 \
-        --device rocm \
         --max-model-len 8192 \
         --trust-remote-code \
         --dtype float16 \
-        --gpu-memory-utilization 0.45 \
-        --disable-log-requests &
+        --gpu-memory-utilization 0.7 \
+        --limit-mm-per-prompt "image=3" &
     VLLM_PID=$!
 
-    echo "Waiting for vLLM to load model (up to 10 minutes)..."
+    echo "Waiting for Qwen2.5-VL model to load (up to 10 minutes)..."
     READY=0
     for i in $(seq 1 120); do
         if curl -sf http://localhost:8001/health > /dev/null 2>&1; then

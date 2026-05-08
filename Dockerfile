@@ -1,4 +1,4 @@
-# ElevenClip AI — HuggingFace Spaces (AMD ROCm)
+# ElevenClip AI — HuggingFace Spaces (AMD ROCm) — Qwen2.5-VL-7B
 FROM rocm/pytorch:rocm6.3_ubuntu22.04_py3.10_pytorch_release_2.3.0
 
 WORKDIR /app
