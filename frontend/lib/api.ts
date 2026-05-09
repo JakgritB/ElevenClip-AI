@@ -66,6 +66,7 @@ export interface SessionResult {
   status: "starting" | "done" | "error";
   clips: ClipResult[];
   error?: string;
+  last_progress?: { stage: string; pct: number; message: string };
 }
 
 export async function getVideoInfo(url: string, accessCode?: string) {

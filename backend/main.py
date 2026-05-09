@@ -17,11 +17,12 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, Header, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header, Response, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from loguru import logger
+import httpx
 
 from src.gpu.rocm_utils import get_device, log_gpu_status
 from src.gpu.vllm_manager import ensure_vllm_running, vllm_stop, vllm_status
@@ -50,8 +51,10 @@ WORK_DIR.mkdir(parents=True, exist_ok=True)
 DEMO_ACCESS_CODE = os.getenv("DEMO_ACCESS_CODE", "").strip()
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
+REMOTE_BACKEND_URL = os.getenv("REMOTE_BACKEND_URL", "").rstrip("/")
 
-app.mount("/downloads", StaticFiles(directory=str(WORK_DIR)), name="downloads")
+if not REMOTE_BACKEND_URL:
+    app.mount("/downloads", StaticFiles(directory=str(WORK_DIR)), name="downloads")
 
 # In-memory session store + WebSocket registry
 sessions: dict[str, dict] = {}
@@ -64,6 +67,15 @@ def _require_access(x_demo_key: Optional[str]) -> None:
     """Optional public-demo guard for expensive GPU endpoints."""
     if DEMO_ACCESS_CODE and (x_demo_key or "").strip() != DEMO_ACCESS_CODE:
         raise HTTPException(403, "Access code required for generation")
+
+
+def _demo_headers(x_demo_key: Optional[str]) -> dict[str, str]:
+    return {"X-Demo-Key": x_demo_key.strip()} if x_demo_key and x_demo_key.strip() else {}
+
+
+def _proxy_response(resp: httpx.Response) -> Response:
+    content_type = resp.headers.get("content-type", "application/octet-stream")
+    return Response(content=resp.content, status_code=resp.status_code, media_type=content_type)
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────
@@ -182,6 +194,14 @@ async def health():
 @app.post("/api/video-info")
 async def video_info(req: VideoInfoRequest, x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
     _require_access(x_demo_key)
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{REMOTE_BACKEND_URL}/api/video-info",
+                json=req.model_dump(),
+                headers=_demo_headers(x_demo_key),
+            )
+        return _proxy_response(resp)
     try:
         return get_video_info(req.url)
     except Exception as e:
@@ -196,6 +216,27 @@ async def process(
 ):
     """Main pipeline endpoint. Returns session_id immediately; progress via WebSocket."""
     _require_access(x_demo_key)
+    if REMOTE_BACKEND_URL:
+        file_bytes: Optional[bytes] = None
+        file_name: Optional[str] = None
+        file_type = "application/octet-stream"
+        if file:
+            file_bytes = await file.read()
+            file_name = file.filename or "upload.mp4"
+            file_type = file.content_type or file_type
+            if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
+                raise HTTPException(413, f"File too large. Max upload size is {MAX_UPLOAD_MB} MB.")
+
+        files = {"file": (file_name, file_bytes, file_type)} if file_bytes and file_name else None
+        async with httpx.AsyncClient(timeout=900.0) as client:
+            resp = await client.post(
+                f"{REMOTE_BACKEND_URL}/api/process",
+                data={"settings_json": settings_json},
+                files=files,
+                headers=_demo_headers(x_demo_key),
+            )
+        return _proxy_response(resp)
+
     if len(active_jobs) >= MAX_CONCURRENT_JOBS:
         raise HTTPException(429, "GPU is busy. Please try again in a few minutes.")
 
@@ -383,6 +424,11 @@ async def _run_pipeline(
 
 @app.get("/api/clips/{session_id}")
 async def get_clips(session_id: str):
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.get(f"{REMOTE_BACKEND_URL}/api/clips/{session_id}")
+        return _proxy_response(resp)
+
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -391,6 +437,14 @@ async def get_clips(session_id: str):
 
 @app.patch("/api/clips/{session_id}/{clip_index}/subtitles")
 async def patch_subtitle(session_id: str, clip_index: int, patch: SubtitlePatch):
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.patch(
+                f"{REMOTE_BACKEND_URL}/api/clips/{session_id}/{clip_index}/subtitles",
+                json=patch.model_dump(),
+            )
+        return _proxy_response(resp)
+
     clip = _get_clip_or_404(session_id, clip_index)
     if not clip.get("ass_path"):
         raise HTTPException(404, "No subtitle file for this clip")
@@ -400,6 +454,14 @@ async def patch_subtitle(session_id: str, clip_index: int, patch: SubtitlePatch)
 
 @app.patch("/api/clips/{session_id}/{clip_index}/style")
 async def patch_global_style(session_id: str, clip_index: int, patch: GlobalStylePatch):
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.patch(
+                f"{REMOTE_BACKEND_URL}/api/clips/{session_id}/{clip_index}/style",
+                json=patch.model_dump(),
+            )
+        return _proxy_response(resp)
+
     clip = _get_clip_or_404(session_id, clip_index)
     if not clip.get("ass_path"):
         raise HTTPException(404, "No subtitle file for this clip")
@@ -409,6 +471,11 @@ async def patch_global_style(session_id: str, clip_index: int, patch: GlobalStyl
 
 @app.post("/api/clips/{session_id}/{clip_index}/render")
 async def render_clip(session_id: str, clip_index: int):
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(f"{REMOTE_BACKEND_URL}/api/clips/{session_id}/{clip_index}/render")
+        return _proxy_response(resp)
+
     clip = _get_clip_or_404(session_id, clip_index)
 
     clip_path = Path(clip["clip_path"])
@@ -439,14 +506,34 @@ def _get_clip_or_404(session_id: str, clip_index: int) -> dict:
 
 # ─── vLLM management endpoints ────────────────────────────────────────────────
 
+if REMOTE_BACKEND_URL:
+    @app.get("/downloads/{file_path:path}")
+    async def proxy_download(file_path: str):
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.get(f"{REMOTE_BACKEND_URL}/downloads/{file_path}")
+        return _proxy_response(resp)
+
+
 @app.get("/api/vllm/status")
 async def get_vllm_status():
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{REMOTE_BACKEND_URL}/api/vllm/status")
+        return _proxy_response(resp)
     return vllm_status()
 
 
 @app.post("/api/vllm/stop")
 async def stop_vllm(x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
     _require_access(x_demo_key)
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{REMOTE_BACKEND_URL}/api/vllm/stop",
+                headers=_demo_headers(x_demo_key),
+            )
+        return _proxy_response(resp)
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, vllm_stop)
     return {"ok": True, "message": "vLLM stopped — will restart automatically on next job"}
@@ -455,6 +542,14 @@ async def stop_vllm(x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")
 @app.post("/api/vllm/start")
 async def start_vllm(x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
     _require_access(x_demo_key)
+    if REMOTE_BACKEND_URL:
+        async with httpx.AsyncClient(timeout=240.0) as client:
+            resp = await client.post(
+                f"{REMOTE_BACKEND_URL}/api/vllm/start",
+                headers=_demo_headers(x_demo_key),
+            )
+        return _proxy_response(resp)
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, ensure_vllm_running)
     return {"ok": True, "status": vllm_status()}

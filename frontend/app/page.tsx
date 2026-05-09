@@ -5,7 +5,7 @@ import VideoUpload from "@/components/VideoUpload";
 import ClipSettings from "@/components/ClipSettings";
 import SubtitleDesigner from "@/components/SubtitleDesigner";
 import GenerationProgress from "@/components/GenerationProgress";
-import { startProcessing, connectProgressWS, type StyleConfig, type ProcessSettings } from "@/lib/api";
+import { startProcessing, connectProgressWS, getClips, type StyleConfig, type ProcessSettings } from "@/lib/api";
 import { Scissors, Check, ChevronLeft, ArrowRight, Zap, Sparkles, PlayCircle } from "lucide-react";
 
 const LANGS = [
@@ -206,11 +206,9 @@ export default function HomePage() {
       wsRef.current = ws;
 
       // HTTP polling fallback — kicks in if WS doesn't deliver messages
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const poll = setInterval(async () => {
         try {
-          const res = await fetch(`${API_BASE}/api/clips/${sessionId}`);
-          const data = await res.json();
+          const data = await getClips(sessionId);
           const lp = data.last_progress;
           if (!wsAlive && lp) setProgress(lp);
           if (data.status === "done") {
@@ -248,7 +246,6 @@ export default function HomePage() {
       const sessionId = await startProcessing(settings, undefined, accessCode);
       localStorage.setItem("elevnclip_session", sessionId);
 
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const ws = connectProgressWS(sessionId, (data) => {
         setProgress(data);
         if (data.stage === "done") { ws.close(); router.push(`/editor?session=${sessionId}`); }
@@ -258,8 +255,7 @@ export default function HomePage() {
 
       const poll = setInterval(async () => {
         try {
-          const res = await fetch(`${API_BASE}/api/clips/${sessionId}`);
-          const data = await res.json();
+          const data = await getClips(sessionId);
           if (data.last_progress) setProgress(data.last_progress);
           if (data.status === "done") { clearInterval(poll); router.push(`/editor?session=${sessionId}`); }
           if (data.status === "error") clearInterval(poll);

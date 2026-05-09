@@ -34,6 +34,7 @@ COPY frontend/ /app/frontend/
 ENV NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_DEMO_ENABLED="true"
 ENV NEXT_PUBLIC_DEMO_ONLY="true"
+ENV REMOTE_BACKEND_URL="http://129.212.178.101:8080"
 
 RUN cd /app/frontend && npm run build
 

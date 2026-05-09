@@ -1,3 +1,14 @@
+---
+title: ElevenClip AI
+emoji: ✂️
+colorFrom: red
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # ElevenClip AI ✂️
 
 > **AMD Developer Hackathon 2026 — Track 3: Vision & Multimodal AI**
@@ -232,6 +243,15 @@ When `DEMO_ACCESS_CODE` is set, `/api/process`, `/api/video-info`, and vLLM star
 For a self-contained HuggingFace GPU Space, leave `NEXT_PUBLIC_API_URL=""` so nginx routes `/api`, `/ws`, and `/downloads` to FastAPI inside the same Space. Only use this mode if the Space hardware is actually GPU-capable.
 
 For the public HuggingFace Space, set `NEXT_PUBLIC_DEMO_ONLY=true`. Visitors can open the UI and run the simulated demo without touching AMD GPU credits. Judges can enter the access code to run real generation against the protected AMD GPU Cloud backend.
+
+The current Docker setup keeps `NEXT_PUBLIC_API_URL=""` so the browser calls the HF Space on the same origin, then FastAPI forwards real judge requests to `REMOTE_BACKEND_URL`. This avoids browser mixed-content blocking from an HTTPS Space calling an HTTP AMD Cloud IP directly.
+
+```env
+# HF Space / Docker runtime
+NEXT_PUBLIC_API_URL=
+NEXT_PUBLIC_DEMO_ONLY=true
+REMOTE_BACKEND_URL=http://129.212.178.101:8080
+```
 
 ---
 
