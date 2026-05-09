@@ -12,10 +12,11 @@ import time
 import requests
 from loguru import logger
 
-VLLM_MODEL   = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
-VLLM_PORT    = int(os.getenv("VLLM_PORT", "8000"))
-IDLE_TIMEOUT = int(os.getenv("VLLM_IDLE_TIMEOUT", "300"))   # 5 min default
-ON_DEMAND    = os.getenv("VLLM_ON_DEMAND", "true").lower() == "true"
+VLLM_MODEL       = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
+VLLM_PORT        = int(os.getenv("VLLM_PORT", "8000"))
+IDLE_TIMEOUT     = int(os.getenv("VLLM_IDLE_TIMEOUT", "300"))   # 5 min default
+ON_DEMAND        = os.getenv("VLLM_ON_DEMAND", "true").lower() == "true"
+DOCKER_CONTAINER = os.getenv("VLLM_DOCKER_CONTAINER", "rocm")  # container that has vllm installed
 
 
 class _VLLMManager:
@@ -28,7 +29,8 @@ class _VLLMManager:
     # ── Public ────────────────────────────────────────────────────────────
 
     def is_running(self) -> bool:
-        if not ON_DEMAND:
+        if not ON_DEMAND or DOCKER_CONTAINER:
+            # Docker mode or external vLLM: rely solely on health endpoint
             return self._check_health()
         with self._lock:
             if self._proc is None or self._proc.poll() is not None:
@@ -40,7 +42,7 @@ class _VLLMManager:
         if not ON_DEMAND:
             return
         with self._lock:
-            if self._proc and self._proc.poll() is None and self._check_health():
+            if self._check_health():
                 self._last_used = time.time()
                 return
             self._start(progress_cb)
@@ -82,6 +84,42 @@ class _VLLMManager:
         if progress_cb:
             progress_cb("Starting AI model (Qwen3-VL)… ~2 min first time")
 
+        # Try Docker container first (vLLM may only be installed inside a container)
+        if DOCKER_CONTAINER:
+            self._start_via_docker(progress_cb)
+        else:
+            self._start_via_subprocess(progress_cb)
+
+    def _start_via_docker(self, progress_cb=None) -> None:
+        """Start vLLM inside an existing Docker container via docker exec."""
+        cmd = (
+            f"vllm serve {VLLM_MODEL} "
+            f"--host 0.0.0.0 --port {VLLM_PORT} "
+            f"--gpu-memory-utilization 0.85 --max-model-len 4096 "
+            f"> /tmp/vllm_server.log 2>&1"
+        )
+        subprocess.Popen(
+            ["docker", "exec", "-d", DOCKER_CONTAINER, "bash", "-c", cmd],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        self._proc = None  # process lives inside container, tracked by health check
+
+        deadline = time.time() + 200
+        tick = 0
+        while time.time() < deadline:
+            time.sleep(5)
+            tick += 1
+            if self._check_health():
+                self._last_used = time.time()
+                logger.info(f"vLLM (docker) ready after {tick * 5}s")
+                return
+            if progress_cb and tick % 6 == 0:
+                progress_cb(f"AI model loading… {tick * 5}s")
+
+        raise RuntimeError("vLLM did not start within 200s")
+
+    def _start_via_subprocess(self, progress_cb=None) -> None:
+        """Start vLLM as a direct subprocess (vllm must be in current Python env)."""
         import sys
         self._proc = subprocess.Popen(
             [
@@ -114,14 +152,20 @@ class _VLLMManager:
         raise RuntimeError("vLLM did not start within 200s")
 
     def _stop_locked(self) -> None:
-        if self._proc and self._proc.poll() is None:
+        if DOCKER_CONTAINER:
+            subprocess.run(
+                ["docker", "exec", DOCKER_CONTAINER, "pkill", "-f", "vllm"],
+                capture_output=True,
+            )
+            self._proc = None
+        elif self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:
                 self._proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
             self._proc = None
-            logger.info("vLLM stopped")
+        logger.info("vLLM stopped")
 
     def _watchdog(self) -> None:
         while True:
