@@ -23,7 +23,7 @@
     "mode_label": "โหมดการตัด",
     "normal_mode": "ซับปกติ",
     "hre_mode": "High-Retention Editing (AI เลือกให้)",
-    "hre_hint": "AI จะเลือกรูปแบบซับ จัด auto-zoom และตัดแบบ TikTok ให้อัตโนมัติ"
+    "hre_hint": "AI จะสร้างแผนตัดต่อรายช่วง เลือกซับหลายรูปแบบ จัด auto-zoom และเน้นจังหวะแบบ TikTok"
   },
   "step3": {
     "title": "ออกแบบซับไตเติ้ล",

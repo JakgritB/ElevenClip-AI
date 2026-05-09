@@ -20,7 +20,7 @@
     "mode_label": "Editing Mode",
     "normal_mode": "Normal Subtitles",
     "hre_mode": "High-Retention Editing (AI decides)",
-    "hre_hint": "AI will auto-select caption style, apply auto-zoom, silence removal, and TikTok-style cuts."
+    "hre_hint": "AI will create a per-segment edit plan with varied captions, auto-zoom, and TikTok-style emphasis."
   },
   "step3": {
     "title": "Subtitle Designer",

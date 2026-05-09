@@ -172,7 +172,9 @@ Respond ONLY with valid JSON — no markdown:
   "face_detected": <true|false>,
   "face_cx": <0.0-1.0>,
   "face_cy": <0.0-1.0>,
-  "subtitle_position": "<top|bottom>",
+  "subtitle_position": "<top|bottom|left|right|center>",
+  "subtitle_mode": "<word|phrase|sentence>",
+  "subtitle_emphasis": "<pop|punch|calm>",
   "subtitle_color": "<white|yellow|cyan|orange|green>",
   "energy_level": "<high|medium|low>",
   "moment_type": "<hook|punchline|context|reaction|transition>"
@@ -184,8 +186,13 @@ Rules:
 - zoom IN slow: context, buildup, moderate energy
 - zoom OUT: reveals, breathing room after intensity
 - HOLD: stable content, text-heavy moments
-- subtitle TOP: face is in bottom half → put text at top
-- subtitle BOTTOM: face is in top half → text at bottom
+- subtitle WORD: short hooks, reactions, punchlines, important keywords
+- subtitle PHRASE: fast but understandable speech, 2-4 words at a time
+- subtitle SENTENCE: explanation, normal conversation, low/medium energy
+- subtitle TOP: face is in bottom half
+- subtitle BOTTOM: face is in top half
+- subtitle LEFT/RIGHT: face or main object is on the opposite side
+- Avoid choosing the exact same subtitle_position and subtitle_mode for every segment.
 - face_cx/face_cy: face center as 0.0-1.0 fraction of frame
 """
 
@@ -196,7 +203,7 @@ def analyze_frame_for_hre(
     seg_idx: int = 0,
     n_total: int = 1,
 ) -> dict:
-    """Per-segment HRE: zoom direction, subtitle position+color for this moment."""
+    """Per-segment HRE: zoom, caption placement, caption mode, and color."""
     try:
         from openai import OpenAI
 
@@ -227,11 +234,12 @@ def analyze_frame_for_hre(
             if raw.startswith("json"):
                 raw = raw[4:]
 
-        analysis = json.loads(raw.strip())
+        analysis = {**_default_hre_analysis(seg_idx, n_total), **json.loads(raw.strip())}
         logger.debug(
             f"HRE seg {seg_idx}/{n_total}: "
             f"zoom={analysis.get('zoom_direction')}({analysis.get('zoom_speed')}) "
-            f"sub={analysis.get('subtitle_position')}/{analysis.get('subtitle_color')} "
+            f"sub={analysis.get('subtitle_position')}/{analysis.get('subtitle_mode')}/"
+            f"{analysis.get('subtitle_color')} "
             f"type={analysis.get('moment_type')}"
         )
         try:
@@ -257,8 +265,10 @@ def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
     else:
         zoom_dir, zoom_speed, moment = "in", "slow", "reaction"
 
-    _colors    = ["yellow", "white",  "cyan",   "orange", "white",  "yellow"]
-    _positions = ["bottom", "top",    "bottom", "top",    "bottom", "top"]
+    _colors    = ["yellow", "white", "cyan", "orange", "white", "yellow"]
+    _positions = ["bottom", "top", "left", "bottom", "right", "top"]
+    _modes     = ["word", "sentence", "phrase", "word", "sentence", "phrase"]
+    _emphasis  = ["punch", "calm", "pop", "punch", "calm", "pop"]
 
     return {
         "zoom_direction":    zoom_dir,
@@ -267,6 +277,8 @@ def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
         "face_cx":           0.5,
         "face_cy":           0.38,
         "subtitle_position": _positions[seg_idx % len(_positions)],
+        "subtitle_mode":     _modes[seg_idx % len(_modes)],
+        "subtitle_emphasis": _emphasis[seg_idx % len(_emphasis)],
         "subtitle_color":    _colors[seg_idx % len(_colors)],
         "energy_level":      "medium",
         "moment_type":       moment,

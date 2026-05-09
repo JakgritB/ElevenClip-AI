@@ -96,11 +96,11 @@ where:
 │                                                                   │
 │  Normal Mode              HRE (High-Retention Editing)           │
 │  ─────────────            ──────────────────────────────         │
-│  • pysubs2 ASS            • Silence removal (ffmpeg)             │
-│  • User style config      • Auto-zoom to face (zoompan)          │
-│  • Font/color/animation   • Jump cuts at boundaries              │
-│  • Karaoke/pop/fade       • Qwen2.5-VL emoji selection          │
-│  • AMD AMF encode         • Impact bold captions                 │
+│  • pysubs2 ASS            • Per-segment AI edit plan             │
+│  • User style config      • Auto-zoom per segment (zoompan)      │
+│  • Font/color/animation   • Word / phrase / sentence captions    │
+│  • Karaoke/pop/fade       • Top / bottom / left / right captions │
+│  • AMD AMF encode         • Qwen2.5-VL emoji selection           │
 └──────────────────────────────────────────────────────────────────┘
            │
            ▼
@@ -139,11 +139,12 @@ Full creative control over:
 
 ### High-Retention Editing (HRE)
 AI chooses everything:
-- Silence removal (`ffmpeg silenceremove`)
-- Auto-zoom to face region (`ffmpeg zoompan` using Qwen2.5-VL face_bbox)
-- Jump cuts at scene boundaries
+- A per-segment edit plan with timestamps
+- Auto-zoom direction and speed per segment (`ffmpeg zoompan`)
+- Caption mode per segment: word, phrase, or sentence
+- Caption placement per segment: top, bottom, left, right, or center
+- Caption color, size, and pop emphasis based on segment energy
 - Qwen2.5-VL selects contextually-appropriate emoji overlay
-- Impact 64px bold white captions, word-by-word, pop animation
 
 ---
 

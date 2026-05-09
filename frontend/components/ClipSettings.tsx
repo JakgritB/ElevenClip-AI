@@ -40,8 +40,8 @@ const L = {
     normalTitle: "Normal Subtitles",
     normalDesc: "Customize font, colors, animations",
     hreTitle: "High-Retention",
-    hreDesc: "AI picks everything + auto-zoom + jump cuts",
-    hreInfo: "AI will auto-select font/colors/animation, remove silence, zoom on faces, and add emoji overlays.",
+    hreDesc: "AI picks timing, captions, and zoom",
+    hreInfo: "AI will create a per-segment edit plan, vary caption placement/mode, zoom on key moments, and add emoji overlays.",
   },
   th: {
     style: "สไตล์คลิป",
@@ -53,8 +53,8 @@ const L = {
     normalTitle: "ซับปกติ",
     normalDesc: "เลือกรูปแบบซับได้เอง",
     hreTitle: "High-Retention",
-    hreDesc: "AI เลือกทุกอย่างให้ + auto-zoom + jump cuts",
-    hreInfo: "AI จะเลือก font/สี/animation + ตัด silence + zoom หน้าคน + ใส่ emoji ให้อัตโนมัติ",
+    hreDesc: "AI เลือกจังหวะ ซับ และซูมให้",
+    hreInfo: "AI จะสร้างแผนตัดต่อรายช่วง เลือกตำแหน่ง/รูปแบบซับ ซูมช่วงสำคัญ และใส่ emoji ให้อัตโนมัติ",
   },
   zh: {
     style: "片段风格",
@@ -66,8 +66,8 @@ const L = {
     normalTitle: "普通字幕",
     normalDesc: "自定义字体、颜色、动画",
     hreTitle: "高留存",
-    hreDesc: "AI 自动处理 + 自动缩放 + 跳切",
-    hreInfo: "AI 将自动选择字体/颜色/动画，去除静音段，放大人脸，并添加表情覆盖。",
+    hreDesc: "AI 自动选择节奏、字幕和缩放",
+    hreInfo: "AI 将生成分段剪辑计划，调整字幕位置/模式，缩放关键时刻，并添加表情覆盖。",
   },
 } as const;
 
