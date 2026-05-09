@@ -105,6 +105,11 @@ def analyze_scene(
             f"tiktok={analysis.get('tiktok_potential', 0):.2f} | "
             f"{analysis.get('highlight_reason', '')[:60]}"
         )
+        try:
+            from src.gpu.vllm_manager import vllm_touch
+            vllm_touch()
+        except Exception:
+            pass
         return analysis
 
     except Exception as e:
@@ -229,6 +234,11 @@ def analyze_frame_for_hre(
             f"sub={analysis.get('subtitle_position')}/{analysis.get('subtitle_color')} "
             f"type={analysis.get('moment_type')}"
         )
+        try:
+            from src.gpu.vllm_manager import vllm_touch
+            vllm_touch()
+        except Exception:
+            pass
         return analysis
 
     except Exception as e:

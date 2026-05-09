@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from loguru import logger
 
 from src.gpu.rocm_utils import get_device, log_gpu_status
+from src.gpu.vllm_manager import ensure_vllm_running, vllm_stop, vllm_status
 from src.ingestion.youtube import download_video_async, get_video_info
 from src.transcription.whisper import transcribe_async, extract_audio
 from src.analysis.scene_detector import detect_scenes, sample_frames
@@ -131,8 +132,17 @@ async def send_progress(session_id: str, stage: str, pct: int, message: str = ""
 class VideoInfoRequest(BaseModel):
     url: str
 
+DEMO_VIDEO_DIR = Path("/root/ElevenClip-AI/demo_videos")
+_DEMO_CANDIDATES = ["demo1.mp4", "demo2.mp4", "demo.mp4"]
+
+def _get_demo_video() -> Path | None:
+    import random
+    available = [DEMO_VIDEO_DIR / f for f in _DEMO_CANDIDATES if (DEMO_VIDEO_DIR / f).exists()]
+    return random.choice(available) if available else None
+
 class ProcessSettings(BaseModel):
     youtube_url: Optional[str] = None
+    use_demo_video: bool = False
     channel_description: str = ""
     clip_style: str = "entertaining"
     target_duration: int = 60
@@ -206,7 +216,10 @@ async def _run_pipeline(
         # ── 1. Acquire video ──────────────────────────────────────────────
         await send_progress(session_id, "download", 5, "Acquiring video...")
 
-        if settings.youtube_url:
+        if settings.use_demo_video and (demo_vid := _get_demo_video()):
+            video_path = demo_vid
+            await send_progress(session_id, "download", 30, f"Using demo video: {demo_vid.name}")
+        elif settings.youtube_url:
             def pct_cb(p):
                 asyncio.run_coroutine_threadsafe(
                     send_progress(session_id, "download", max(5, int(p * 0.28)), f"Downloading {p:.0f}%"),
@@ -255,6 +268,15 @@ async def _run_pipeline(
 
         # ── 5. Qwen3-VL multimodal analysis (concurrent requests to vLLM) ─
         n_scenes = len(scenes_with_frames)
+        await send_progress(session_id, "vision", 58, "Ensuring AI model is running...")
+        await loop.run_in_executor(
+            None,
+            lambda: ensure_vllm_running(
+                progress_cb=lambda msg: asyncio.run_coroutine_threadsafe(
+                    send_progress(session_id, "vision", 59, msg), loop
+                )
+            ),
+        )
         await send_progress(session_id, "vision", 60, f"Qwen3-VL analyzing {n_scenes} scenes (vision + audio + text fusion)...")
         scenes_analyzed = await analyze_scenes_batch_async(
             scenes_with_frames,
@@ -391,6 +413,27 @@ def _get_clip_or_404(session_id: str, clip_index: int) -> dict:
     if not clip:
         raise HTTPException(404, f"Clip {clip_index} not found")
     return clip
+
+
+# ─── vLLM management endpoints ────────────────────────────────────────────────
+
+@app.get("/api/vllm/status")
+async def get_vllm_status():
+    return vllm_status()
+
+
+@app.post("/api/vllm/stop")
+async def stop_vllm():
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, vllm_stop)
+    return {"ok": True, "message": "vLLM stopped — will restart automatically on next job"}
+
+
+@app.post("/api/vllm/start")
+async def start_vllm():
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, ensure_vllm_running)
+    return {"ok": True, "status": vllm_status()}
 
 
 if __name__ == "__main__":
