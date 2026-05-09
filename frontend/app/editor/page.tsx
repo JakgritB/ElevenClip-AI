@@ -46,6 +46,7 @@ const L = {
     wordMode: "Word", sentenceMode: "Sentence",
     resetGlobal: "Reset to global style",
     noSubsHre: "No subtitles in HRE mode — AI handles styling automatically.",
+    cut: "Cut",
     demoSession: "Demo session", waitRender: "Waiting for render", close: "Close",
     preview: "PREVIEW",
   },
@@ -69,6 +70,7 @@ const L = {
     wordMode: "คำต่อคำ", sentenceMode: "ประโยค",
     resetGlobal: "รีเซ็ตเป็นสไตล์ทั่วไป",
     noSubsHre: "HRE mode ไม่มีซับ — AI จัดการสไตล์ให้อัตโนมัติ",
+    cut: "จุดตัด",
     demoSession: "Demo session", waitRender: "รอการเรนเดอร์", close: "ปิด",
     preview: "PREVIEW",
   },
@@ -92,6 +94,7 @@ const L = {
     wordMode: "逐词", sentenceMode: "句子",
     resetGlobal: "重置为全局样式",
     noSubsHre: "HRE模式无字幕 — AI自动处理样式",
+    cut: "切割",
     demoSession: "演示会话", waitRender: "等待渲染", close: "关闭",
     preview: "预览",
   },
@@ -309,12 +312,12 @@ function EditorContent() {
   const [cutRegions,  setCutRegions]  = useState<Record<number, CutRegion[]>>({});
 
   const [globalStyle, setGlobalStyle] = useState<StyleConfig>({
-    font_family: "Noto Sans", font_size: 52,
+    font_family: "Noto Sans", font_size: 64,
     primary_color: "#FFFFFF", secondary_color: "#FFFF00",
     outline_color: "#000000", shadow_color: "#000000",
     bold: true, italic: false, underline: false,
-    outline_size: 2.5, shadow_size: 1.5,
-    alignment: 2, margin_v: 40,
+    outline_size: 3.0, shadow_size: 1.5,
+    alignment: 2, margin_v: 250,
     display_mode: "word", animation: "pop",
   });
 
@@ -453,8 +456,9 @@ function EditorContent() {
   );
 
   const clip = clips[activeClip];
-  const clipDownloadUrl = clip ? (downloadUrls[clip.index] ?? clip.download_url) : "";
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const rawUrl = clip ? (downloadUrls[clip.index] ?? clip.download_url) : "";
+  const clipDownloadUrl = rawUrl.startsWith("http") ? rawUrl : rawUrl ? `${apiBase}${rawUrl}` : "";
   const suggestedCaption = (clip as (typeof clip & { suggested_caption?: string }))?.suggested_caption;
   const currentCuts  = clip ? (cutRegions[clip.index] ?? []) : [];
   const clipDuration = clip ? clip.duration + (trimEnd[clip.index] ?? 0) - (trimStart[clip.index] ?? 0) : 60;
@@ -492,7 +496,7 @@ function EditorContent() {
             ))}
           </div>
           <span className="text-xs text-white/30">
-            {clips.length} clip{clips.length !== 1 ? "s" : ""} · {isDemo ? lbl.demoSession : `Session: ${sessionId.slice(0, 8)}…`}
+            {clips.length} {lbl.clips.toLowerCase()} · {isDemo ? lbl.demoSession : `Session: ${sessionId.slice(0, 8)}…`}
           </span>
         </div>
       </nav>
@@ -524,7 +528,7 @@ function EditorContent() {
             {clipDownloadUrl ? (
               <video
                 key={clipDownloadUrl}
-                src={isDemo ? clipDownloadUrl : `${apiBase}${clipDownloadUrl}`}
+                src={clipDownloadUrl}
                 controls
                 className="absolute inset-0 w-full h-full object-cover"
               />
@@ -558,10 +562,8 @@ function EditorContent() {
               </button>
             )}
             <a
-              href={clipDownloadUrl ? (isDemo ? clipDownloadUrl : `${apiBase}${clipDownloadUrl}`) : undefined}
-              download={!isDemo && !!clipDownloadUrl}
-              target={isDemo ? "_blank" : undefined}
-              rel={isDemo ? "noreferrer" : undefined}
+              href={clipDownloadUrl || undefined}
+              download={!!clipDownloadUrl ? `clip_${(clip?.index ?? 0) + 1}.mp4` : undefined}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition text-white ${
                 clipDownloadUrl ? "bg-white/10 hover:bg-white/20 cursor-pointer" : "bg-white/5 opacity-40 cursor-not-allowed pointer-events-none"
               }`}>
@@ -667,7 +669,7 @@ function EditorContent() {
 
                 {currentCuts.map((cut, ci) => (
                   <div key={cut.id} className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2">
-                    <span className="text-[10px] text-white/40 shrink-0">Cut {ci + 1}</span>
+                    <span className="text-[10px] text-white/40 shrink-0">{(lbl as typeof L["en"]).cut ?? "Cut"} {ci + 1}</span>
                     <div className="flex items-center gap-1.5 flex-1">
                       <input type="number" step={0.1} min={0} max={clipDuration} value={cut.from}
                         onChange={(e) => updateCut(clip.index, cut.id, +e.target.value, cut.to)}

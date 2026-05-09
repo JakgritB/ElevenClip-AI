@@ -35,6 +35,9 @@ def detect_scenes(
                 scenes.append({"start": start, "end": end, "duration": duration})
 
         logger.info(f"Detected {len(scenes)} scenes")
+        if not scenes:
+            logger.warning("0 scenes from ContentDetector — using fixed-interval fallback")
+            return _fixed_interval_scenes(video_path, interval_sec=8.0)
         return scenes
 
     except ImportError:

@@ -355,18 +355,27 @@ export default function SubtitleDesigner({ config, onChange, subtitleLanguage, u
         {/* Position */}
         <div className="space-y-1">
           <label className="text-xs font-medium text-white/60">{lbl.position}</label>
-          <div className="grid grid-cols-3 gap-0.5 w-20">
-            {ALIGNMENTS.map((a) => (
-              <button key={a.val}
-                onClick={() => onChange({ alignment: a.val })}
-                className={`aspect-square rounded text-xs font-bold transition ${
-                  config.alignment === a.val
-                    ? "bg-violet-600 text-white"
-                    : "bg-white/10 text-white/50 hover:bg-white/20"
-                }`}>
-                {a.label}
-              </button>
-            ))}
+          <div className="flex items-start gap-3">
+            <div className="grid grid-cols-3 gap-0.5 w-20 shrink-0">
+              {ALIGNMENTS.map((a) => (
+                <button key={a.val}
+                  onClick={() => onChange({ alignment: a.val })}
+                  className={`aspect-square rounded text-xs font-bold transition ${
+                    config.alignment === a.val
+                      ? "bg-violet-600 text-white"
+                      : "bg-white/10 text-white/50 hover:bg-white/20"
+                  }`}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 space-y-1 pt-1">
+              <label className="text-xs text-white/50">Margin ({config.margin_v ?? 250}px)</label>
+              <input type="range" min={50} max={800} step={10}
+                value={config.margin_v ?? 250}
+                onChange={(e) => onChange({ margin_v: +e.target.value })}
+                className="w-full accent-violet-500" />
+            </div>
           </div>
         </div>
       </div>

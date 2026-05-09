@@ -67,7 +67,7 @@ def build_style(
     alignment: int = 2,  # 2=bottom-center, 8=top-center
     margin_l: int = 40,
     margin_r: int = 40,
-    margin_v: int = 120,
+    margin_v: int = 250,
     scale_x: int = 100,
     scale_y: int = 100,
     spacing: float = 0.0,
@@ -154,7 +154,7 @@ def generate_subtitles(
         alignment=style_config.get("alignment", 2),
         margin_l=style_config.get("margin_l", 40),
         margin_r=style_config.get("margin_r", 40),
-        margin_v=style_config.get("margin_v", 120),
+        margin_v=style_config.get("margin_v", 250),
         scale_x=style_config.get("scale_x", 100),
         scale_y=style_config.get("scale_y", 100),
         spacing=style_config.get("spacing", 0.0),

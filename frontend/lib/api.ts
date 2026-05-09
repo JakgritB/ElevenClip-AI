@@ -2,6 +2,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface ProcessSettings {
   youtube_url?: string;
+  use_demo_video?: boolean;
   channel_description: string;
   clip_style: string;
   target_duration: number;

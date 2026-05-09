@@ -1,6 +1,6 @@
 """YouTube video downloader using yt-dlp."""
-import os
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import Optional, Callable
 import yt_dlp
@@ -33,7 +33,13 @@ def download_video(
     output_template = str(output_dir / f"{session_id}_input.%(ext)s")
 
     ydl_opts = {
-        "format": f"bestvideo[height<={max_height}]+bestaudio/bestvideo[height<={max_height}]/best[height<={max_height}]/best",
+        "format": (
+            f"bestvideo[vcodec^=avc1][height<={max_height}]+bestaudio/"
+            f"bestvideo[vcodec^=avc][height<={max_height}]+bestaudio/"
+            f"bestvideo[vcodec!^=av01][height<={max_height}]+bestaudio/"
+            f"best[height<={max_height}]/best"
+        ),
+        "format_sort": ["vcodec:h264"],
         "outtmpl": output_template,
         "merge_output_format": "mp4",
         "quiet": True,
@@ -43,7 +49,14 @@ def download_video(
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
         }],
+        # Use iOS/Android clients to bypass datacenter IP bot-detection
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "tv_embedded"],
+            }
+        },
     }
+    _inject_cookies(ydl_opts)
 
     logger.info(f"Downloading: {url}")
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -54,17 +67,61 @@ def download_video(
 
     output_path = output_dir / f"{session_id}_input.mp4"
     if not output_path.exists():
-        # yt-dlp may use different extension
         for f in output_dir.glob(f"{session_id}_input.*"):
             output_path = f
             break
 
+    # Safety: transcode AV1 → h264 if yt-dlp still picked it
+    output_path = _ensure_h264(output_path)
     return output_path
+
+
+def _ensure_h264(video_path: Path) -> Path:
+    """Transcode to h264 if video codec is AV1 (not supported by PySceneDetect on this server)."""
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(video_path)],
+        capture_output=True, text=True,
+    )
+    codec = probe.stdout.strip().lower()
+    if codec not in ("av1", "av01"):
+        return video_path
+
+    logger.warning(f"AV1 detected ({video_path.name}), transcoding to h264...")
+    out = video_path.with_name(video_path.stem + "_h264.mp4")
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(video_path), "-c:v", "libx264", "-preset", "fast",
+         "-crf", "23", "-c:a", "aac", "-b:a", "128k", str(out)],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        logger.info(f"Transcoded to h264: {out.name}")
+        return out
+    logger.error(f"Transcode failed: {result.stderr[-200:]}")
+    return video_path
+
+
+_COOKIES_PATH = Path("/root/cookies.txt")
+
+
+def _inject_cookies(opts: dict) -> None:
+    """Add cookiefile to ydl_opts if cookies.txt exists on server."""
+    if _COOKIES_PATH.exists():
+        opts["cookiefile"] = str(_COOKIES_PATH)
+        logger.debug(f"Using cookies: {_COOKIES_PATH}")
 
 
 def get_video_info(url: str) -> dict:
     """Return metadata without downloading."""
-    ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extractor_args": {
+            "youtube": {"player_client": ["ios", "android", "tv_embedded"]}
+        },
+    }
+    _inject_cookies(ydl_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         return {

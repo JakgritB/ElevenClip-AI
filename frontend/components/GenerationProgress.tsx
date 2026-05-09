@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import {
   Download, Music, Film, Mic, Eye, Star, Scissors, Type,
   CheckCircle2, AlertCircle, Zap, Brain, LucideProps,
@@ -33,6 +34,15 @@ export default function GenerationProgress({ stage, pct, message, uiLang = "en" 
   const Icon = info.Icon;
   const label = uiLang === "th" ? info.th : uiLang === "zh" ? info.zh : info.en;
   const isError = stage === "error";
+
+  // Fake progress: slowly animate toward 4% when real pct is 0 (pipeline just started)
+  const [fakePct, setFakePct] = useState(0);
+  useEffect(() => {
+    if (pct > 0 || isError || stage === "done") { setFakePct(0); return; }
+    const id = setInterval(() => setFakePct((p) => Math.min(p + 0.3, 4)), 400);
+    return () => clearInterval(id);
+  }, [pct, isError, stage]);
+  const displayPct = Math.max(pct, Math.round(fakePct * 10) / 10);
 
   const progressLabel = uiLang === "th" ? "ความคืบหน้า" : uiLang === "zh" ? "处理进度" : "Progress";
 
@@ -73,16 +83,16 @@ export default function GenerationProgress({ stage, pct, message, uiLang = "en" 
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-white/40">
           <span>{progressLabel}</span>
-          <span>{pct}%</span>
+          <span>{displayPct}%</span>
         </div>
         <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
               isError ? "bg-red-500"
-              : pct >= 100 ? "bg-green-500"
+              : displayPct >= 100 ? "bg-green-500"
               : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500"
             }`}
-            style={{ width: `${pct}%` }}
+            style={{ width: `${displayPct}%` }}
           />
         </div>
       </div>

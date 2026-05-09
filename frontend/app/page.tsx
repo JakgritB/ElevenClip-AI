@@ -105,7 +105,6 @@ export default function HomePage() {
 
   const [step, setStep] = useState<Step>(1);
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [channelDesc, setChannelDesc] = useState("");
 
   const [clipSettings, setClipSettings] = useState({
@@ -119,7 +118,7 @@ export default function HomePage() {
 
   const [styleConfig, setStyleConfig] = useState<StyleConfig>({
     font_family: "Montserrat",
-    font_size: 52,
+    font_size: 64,
     primary_color: "#FFFFFF",
     secondary_color: "#FFFF00",
     outline_color: "#000000",
@@ -127,12 +126,12 @@ export default function HomePage() {
     bold: true,
     italic: false,
     underline: false,
-    outline_size: 2.5,
+    outline_size: 3.0,
     shadow_size: 1.5,
     alignment: 2,
     margin_l: 20,
     margin_r: 20,
-    margin_v: 40,
+    margin_v: 250,
     display_mode: "word",
     animation: "pop",
     fade_in_ms: 200,
@@ -143,7 +142,7 @@ export default function HomePage() {
   const wsRef = useRef<WebSocket | null>(null);
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canProceedStep1 = !!(videoFile || youtubeUrl);
+  const canProceedStep1 = !!videoFile;
 
   useEffect(() => {
     const font = FONT_MAP[clipSettings.subtitle_language] ?? "Noto Sans";
@@ -160,37 +159,93 @@ export default function HomePage() {
     setStep("generating");
     try {
       const settings: ProcessSettings = {
-        youtube_url: youtubeUrl || undefined,
         channel_description: channelDesc,
         ...clipSettings,
         style_config: clipSettings.mode === "hre" ? {} : { ...styleConfig, subtitle_language: clipSettings.subtitle_language },
       };
       const sessionId = await startProcessing(settings, videoFile ?? undefined);
       localStorage.setItem("elevnclip_session", sessionId);
+
+      let wsAlive = false;
+      const ws = connectProgressWS(sessionId, (data) => {
+        wsAlive = true;
+        setProgress(data);
+        if (data.stage === "done") { ws.close(); router.push(`/editor?session=${sessionId}`); }
+        if (data.stage === "error") ws.close();
+      });
+      wsRef.current = ws;
+
+      // HTTP polling fallback — kicks in if WS doesn't deliver messages
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/clips/${sessionId}`);
+          const data = await res.json();
+          const lp = data.last_progress;
+          if (!wsAlive && lp) setProgress(lp);
+          if (data.status === "done") {
+            clearInterval(poll);
+            if (!wsAlive) router.push(`/editor?session=${sessionId}`);
+          }
+          if (data.status === "error") clearInterval(poll);
+        } catch { /* ignore */ }
+      }, 3000);
+      // Stop polling after 10 min
+      setTimeout(() => clearInterval(poll), 600_000);
+    } catch (e: unknown) {
+      setProgress({ stage: "error", pct: 0, message: e instanceof Error ? e.message : "Error" });
+    }
+  };
+
+  const handleDemo = async () => {
+    setStep("generating");
+    try {
+      const settings: ProcessSettings = {
+        use_demo_video: true,
+        channel_description: "Gaming and reaction channel with funny moments",
+        clip_style: "funny",
+        target_duration: 60,
+        clip_count: 3,
+        clip_language: "auto",
+        subtitle_language: "english",
+        mode: "hre",
+        style_config: {},
+      };
+      const sessionId = await startProcessing(settings);
+      localStorage.setItem("elevnclip_session", sessionId);
+
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const ws = connectProgressWS(sessionId, (data) => {
         setProgress(data);
         if (data.stage === "done") { ws.close(); router.push(`/editor?session=${sessionId}`); }
         if (data.stage === "error") ws.close();
       });
       wsRef.current = ws;
-    } catch (e: unknown) {
-      setProgress({ stage: "error", pct: 0, message: e instanceof Error ? e.message : "Error" });
-    }
-  };
 
-  const handleDemo = () => {
-    setStep("generating");
-    let i = 0;
-    demoTimerRef.current = setInterval(() => {
-      if (i < DEMO_STAGES.length) {
-        setProgress(DEMO_STAGES[i]);
-        if (DEMO_STAGES[i].stage === "done") {
-          clearInterval(demoTimerRef.current!);
-          setTimeout(() => router.push("/editor?session=demo"), 600);
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/clips/${sessionId}`);
+          const data = await res.json();
+          if (data.last_progress) setProgress(data.last_progress);
+          if (data.status === "done") { clearInterval(poll); router.push(`/editor?session=${sessionId}`); }
+          if (data.status === "error") clearInterval(poll);
+        } catch { /* ignore */ }
+      }, 3000);
+      setTimeout(() => clearInterval(poll), 600_000);
+    } catch {
+      // Fallback to fake demo animation if server unavailable
+      let i = 0;
+      demoTimerRef.current = setInterval(() => {
+        if (i < DEMO_STAGES.length) {
+          setProgress(DEMO_STAGES[i]);
+          if (DEMO_STAGES[i].stage === "done") {
+            clearInterval(demoTimerRef.current!);
+            setTimeout(() => router.push("/editor?session=demo"), 600);
+          }
+          i++;
         }
-        i++;
-      }
-    }, 900);
+      }, 900);
+    }
   };
 
   return (
@@ -260,8 +315,7 @@ export default function HomePage() {
               <>
                 <h2 className="text-lg font-semibold mb-4">{t.addVideo}</h2>
                 <VideoUpload
-                  onFileSelect={(f) => { setVideoFile(f); setYoutubeUrl(""); }}
-                  onUrlSelect={(u) => { setYoutubeUrl(u); setVideoFile(null); }}
+                  onFileSelect={(f) => setVideoFile(f)}
                   onChannelDesc={setChannelDesc}
                   channelDesc={channelDesc}
                   uiLang={uiLang}
