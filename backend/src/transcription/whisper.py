@@ -82,24 +82,62 @@ def transcribe(
         from transformers import pipeline
         import torch
 
-        pipe = pipeline(
-            "automatic-speech-recognition",
-            model=f"openai/whisper-{model_size}",
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            device=device,
-            model_kwargs={"attn_implementation": "sdpa"},  # PyTorch 2.0 SDPA for ROCm
-        )
+        # AMD ROCm: float16 triggers HIPBLAS_STATUS_INTERNAL_ERROR on some models.
+        # Use float32 for stability; bfloat16 as middle ground if available.
+        if device == "cuda":
+            try:
+                name = torch.cuda.get_device_name(0).lower()
+                is_amd = any(k in name for k in ("amd", "radeon", "instinct", "mi"))
+            except Exception:
+                is_amd = True  # default safe
+            dtype = torch.bfloat16 if is_amd else torch.float16
+        else:
+            dtype = torch.float32
+
+        def _build_pipe(dt):
+            return pipeline(
+                "automatic-speech-recognition",
+                model=f"openai/whisper-{model_size}",
+                torch_dtype=dt,
+                device=device,
+                model_kwargs={"attn_implementation": "sdpa"},
+            )
+
+        try:
+            pipe = _build_pipe(dtype)
+        except Exception:
+            logger.warning("Whisper: falling back to float32")
+            pipe = _build_pipe(torch.float32)
 
         generate_kwargs = {"task": task}
         if clip_lang_code:
             generate_kwargs["language"] = clip_lang_code
 
-        result = pipe(
-            str(audio_path),
-            batch_size=batch_size,
-            return_timestamps="word",
-            generate_kwargs=generate_kwargs,
-        )
+        try:
+            result = pipe(
+                str(audio_path),
+                batch_size=batch_size,
+                return_timestamps="word",
+                generate_kwargs=generate_kwargs,
+            )
+        except RuntimeError as e:
+            if "HIPBLAS" in str(e) or "CUDA" in str(e):
+                # GPU error — retry on CPU with smaller batch
+                logger.warning(f"GPU error in Whisper, retrying on CPU: {e}")
+                pipe_cpu = pipeline(
+                    "automatic-speech-recognition",
+                    model=f"openai/whisper-{model_size}",
+                    torch_dtype=torch.float32,
+                    device="cpu",
+                )
+                result = pipe_cpu(
+                    str(audio_path),
+                    batch_size=1,
+                    return_timestamps="word",
+                    generate_kwargs=generate_kwargs,
+                )
+            else:
+                raise
 
         segments = _build_segments(result, sub_lang_code)
         char_level = sub_lang_code in CHAR_LEVEL_LANGUAGES
