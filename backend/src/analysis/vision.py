@@ -161,7 +161,7 @@ def _default_analysis() -> dict:
     }
 
 
-HRE_SEGMENT_PROMPT = """Analyze this video frame for high-retention TikTok editing decisions.
+HRE_SEGMENT_PROMPT = """Analyze these video frames for high-retention TikTok editing decisions.
 
 Segment {seg_idx} of {n_total}. Transcript: "{context}"
 
@@ -172,7 +172,14 @@ Respond ONLY with valid JSON — no markdown:
   "face_detected": <true|false>,
   "face_cx": <0.0-1.0>,
   "face_cy": <0.0-1.0>,
+  "subject_bbox": [<x1>, <y1>, <x2>, <y2>] or null,
+  "zoom_anchor_x": <0.0-1.0>,
+  "zoom_anchor_y": <0.0-1.0>,
   "subtitle_position": "<top|bottom|left|right|center>",
+  "caption_x": <0.10-0.90>,
+  "caption_y": <0.12-0.88>,
+  "caption_anchor": <1-9>,
+  "caption_max_width_pct": <0.35-0.82>,
   "subtitle_mode": "<word|phrase|sentence>",
   "subtitle_emphasis": "<pop|punch|calm>",
   "subtitle_color": "<white|yellow|cyan|orange|green>",
@@ -189,16 +196,19 @@ Rules:
 - subtitle WORD: short hooks, reactions, punchlines, important keywords
 - subtitle PHRASE: fast but understandable speech, 2-4 words at a time
 - subtitle SENTENCE: explanation, normal conversation, low/medium energy
-- subtitle TOP: face is in bottom half
-- subtitle BOTTOM: face is in top half
-- subtitle LEFT/RIGHT: face or main object is on the opposite side
-- Avoid choosing the exact same subtitle_position and subtitle_mode for every segment.
+- subject_bbox: main face/person/product/object box in normalized frame coordinates, or null if unclear
+- zoom_anchor_x/y: center of the face/person/product to keep important content in frame; never choose a blank wall/window
+- caption_x/y: choose an actually empty readable area in this frame, not just fixed top/bottom
+- caption_anchor: ASS anchor 1-9 matching caption_x/y (1 bottom-left, 5 center, 9 top-right)
+- caption_max_width_pct: smaller when the empty space is narrow; captions must stay fully inside the 9:16 frame
+- Keep captions away from face, product, hands, and important screen/object regions.
+- Avoid choosing the exact same caption_x/y and subtitle_mode for every segment.
 - face_cx/face_cy: face center as 0.0-1.0 fraction of frame
 """
 
 
-def analyze_frame_for_hre(
-    frame_path: "Path",
+def analyze_frames_for_hre(
+    frame_paths: list["Path"],
     context: str = "",
     seg_idx: int = 0,
     n_total: int = 1,
@@ -208,23 +218,29 @@ def analyze_frame_for_hre(
         from openai import OpenAI
 
         client = OpenAI(base_url=VLLM_BASE_URL, api_key=VLLM_API_KEY)
-        if not Path(frame_path).exists():
+        valid_frames = [Path(p) for p in frame_paths[:3] if Path(p).exists()]
+        if not valid_frames:
             return _default_hre_analysis(seg_idx, n_total)
 
-        b64 = _encode_image(str(frame_path))
+        content = []
+        for frame_path in valid_frames:
+            b64 = _encode_image(str(frame_path))
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+            })
+
         prompt = HRE_SEGMENT_PROMPT.format(
-            seg_idx=seg_idx, n_total=n_total, context=context[:200]
+            seg_idx=seg_idx, n_total=n_total, context=context[:320]
         )
+        content.append({"type": "text", "text": prompt})
         response = client.chat.completions.create(
             model=VLLM_MODEL,
             messages=[{
                 "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
+                "content": content,
             }],
-            max_tokens=200,
+            max_tokens=380,
             temperature=0.1,
         )
         raw = response.choices[0].message.content.strip()
@@ -238,6 +254,7 @@ def analyze_frame_for_hre(
         logger.debug(
             f"HRE seg {seg_idx}/{n_total}: "
             f"zoom={analysis.get('zoom_direction')}({analysis.get('zoom_speed')}) "
+            f"caption=({analysis.get('caption_x')},{analysis.get('caption_y')}) "
             f"sub={analysis.get('subtitle_position')}/{analysis.get('subtitle_mode')}/"
             f"{analysis.get('subtitle_color')} "
             f"type={analysis.get('moment_type')}"
@@ -254,6 +271,16 @@ def analyze_frame_for_hre(
         return _default_hre_analysis(seg_idx, n_total)
 
 
+def analyze_frame_for_hre(
+    frame_path: "Path",
+    context: str = "",
+    seg_idx: int = 0,
+    n_total: int = 1,
+) -> dict:
+    """Backward-compatible wrapper for callers that provide one frame."""
+    return analyze_frames_for_hre([frame_path], context, seg_idx, n_total)
+
+
 def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
     """Fallback with varied decisions based on position in clip."""
     if seg_idx == 0:
@@ -267,8 +294,11 @@ def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
 
     _colors    = ["yellow", "white", "cyan", "orange", "white", "yellow"]
     _positions = ["bottom", "top", "left", "bottom", "right", "top"]
+    _coords    = [(0.50, 0.76), (0.50, 0.18), (0.28, 0.56), (0.50, 0.72), (0.72, 0.56), (0.50, 0.20)]
+    _anchors   = [2, 8, 4, 2, 6, 8]
     _modes     = ["word", "sentence", "phrase", "word", "sentence", "phrase"]
     _emphasis  = ["punch", "calm", "pop", "punch", "calm", "pop"]
+    caption_x, caption_y = _coords[seg_idx % len(_coords)]
 
     return {
         "zoom_direction":    zoom_dir,
@@ -276,7 +306,14 @@ def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
         "face_detected":     False,
         "face_cx":           0.5,
         "face_cy":           0.38,
+        "subject_bbox":      None,
+        "zoom_anchor_x":     0.5,
+        "zoom_anchor_y":     0.38,
         "subtitle_position": _positions[seg_idx % len(_positions)],
+        "caption_x":         caption_x,
+        "caption_y":         caption_y,
+        "caption_anchor":    _anchors[seg_idx % len(_anchors)],
+        "caption_max_width_pct": 0.62,
         "subtitle_mode":     _modes[seg_idx % len(_modes)],
         "subtitle_emphasis": _emphasis[seg_idx % len(_emphasis)],
         "subtitle_color":    _colors[seg_idx % len(_colors)],

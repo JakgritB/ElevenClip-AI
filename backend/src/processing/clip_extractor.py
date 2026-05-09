@@ -5,6 +5,26 @@ from pathlib import Path
 from loguru import logger
 
 
+def _face_center_expr(face_bbox: list | None) -> str | None:
+    """Return a crop expression x-center from Qwen's normalized face bbox."""
+    if not face_bbox or len(face_bbox) != 4:
+        return None
+    try:
+        x1, _, x2, _ = [float(v) for v in face_bbox]
+    except Exception:
+        return None
+
+    # Qwen prompt asks for normalized percentages. Older comments said pixels,
+    # so keep a conservative pixel fallback, but prefer normalized handling.
+    face_cx = (x1 + x2) / 2.0
+    if max(abs(x1), abs(x2)) <= 1.5:
+        face_cx = min(1.0, max(0.0, face_cx))
+        return f"{face_cx:.4f}*iw-540"
+    if 0 <= face_cx <= 1080:
+        return f"({face_cx:.1f}/1080)*iw-540"
+    return None
+
+
 def extract_clip(
     video_path: Path,
     start: float,
@@ -37,10 +57,9 @@ def extract_clip(
         else:
             # Crop: scale to 1920 height first, then center-crop to 1080 wide
             # Optionally center on face_bbox x when available
-            if face_bbox and len(face_bbox) == 4:
-                x1, _, x2, _ = face_bbox
-                face_cx = int((x1 + x2) / 2)
-                crop = f"scale=-1:1920,crop=1080:1920:max(0\\,min(iw-1080\\,{face_cx}*iw/in_w-540)):0"
+            face_expr = _face_center_expr(face_bbox)
+            if face_expr:
+                crop = f"scale=-1:1920,crop=1080:1920:max(0\\,min(iw-1080\\,{face_expr})):0"
             else:
                 crop = "scale=-1:1920,crop=1080:1920:(iw-1080)/2:0"
             vf_filters.append(crop)

@@ -125,6 +125,24 @@ def _extract_frame(video_path: Path, t: float, out_path: Path) -> bool:
     return result.returncode == 0 and out_path.exists()
 
 
+def _extract_segment_frames(video_path: Path, seg: dict, seg_idx: int, tmp_dir: Path) -> list[Path]:
+    """Extract a few representative frames so HRE decisions see motion, not one random still."""
+    start = float(seg["start"])
+    end = float(seg["end"])
+    duration = max(0.1, end - start)
+    times = [
+        start + duration * 0.25,
+        start + duration * 0.50,
+        start + duration * 0.75,
+    ]
+    frames: list[Path] = []
+    for j, t in enumerate(times):
+        frame_path = tmp_dir / f"seg_{seg_idx:03d}_{j}.jpg"
+        if _extract_frame(video_path, min(max(start, t), max(start, end - 0.05)), frame_path):
+            frames.append(frame_path)
+    return frames
+
+
 # ─── Per-segment AI analysis ──────────────────────────────────────────────────
 
 def _analyze_segment(
@@ -136,12 +154,10 @@ def _analyze_segment(
     clip_start: float,
     tmp_dir: Path,
 ) -> dict:
-    from src.analysis.vision import analyze_frame_for_hre, _default_hre_analysis
+    from src.analysis.vision import analyze_frames_for_hre, _default_hre_analysis
 
-    mid_t = (seg["start"] + seg["end"]) / 2.0
-    frame_path = tmp_dir / f"seg_{seg_idx:03d}.jpg"
-
-    if not _extract_frame(video_path, mid_t, frame_path):
+    frame_paths = _extract_segment_frames(video_path, seg, seg_idx, tmp_dir)
+    if not frame_paths:
         return _default_hre_analysis(seg_idx, n_total)
 
     words_all: list[dict] = []
@@ -156,7 +172,7 @@ def _analyze_segment(
         if w.get("start", 0) < abs_end and w.get("end", 0) > abs_start
     ).strip()
 
-    return analyze_frame_for_hre(frame_path, context, seg_idx, n_total)
+    return analyze_frames_for_hre(frame_paths, context, seg_idx, n_total)
 
 
 # ─── Zoom expression builders ─────────────────────────────────────────────────
@@ -171,9 +187,8 @@ def _build_zoom_exprs(
     """
     direction     = analysis.get("zoom_direction", "in")
     speed         = analysis.get("zoom_speed", "slow")
-    face_detected = bool(analysis.get("face_detected", False))
-    face_cx       = float(analysis.get("face_cx") or 0.5)
-    face_cy       = float(analysis.get("face_cy") or 0.38)
+    zoom_anchor_x = _clamp_float(analysis.get("zoom_anchor_x"), _clamp_float(analysis.get("face_cx"), 0.5))
+    zoom_anchor_y = _clamp_float(analysis.get("zoom_anchor_y"), _clamp_float(analysis.get("face_cy"), 0.38))
 
     if direction == "in":
         if speed == "fast":
@@ -188,13 +203,13 @@ def _build_zoom_exprs(
     else:  # hold
         z_expr, max_zoom = "1.08", 1.08
 
-    if face_detected and direction == "in" and max_zoom > 1.05:
-        x_expr = f"max(0\\,min(iw-iw/zoom\\,iw*{face_cx:.3f}-iw/zoom/2))"
-        y_expr = f"max(0\\,min(ih-ih/zoom\\,ih*{face_cy:.3f}-ih/zoom/2))"
+    if direction == "in" and max_zoom > 1.05:
+        x_expr = f"max(0\\,min(iw-iw/zoom\\,iw*{zoom_anchor_x:.3f}-iw/zoom/2))"
+        y_expr = f"max(0\\,min(ih-ih/zoom\\,ih*{zoom_anchor_y:.3f}-ih/zoom/2))"
     else:
         x_expr = "iw/2-(iw/zoom/2)"
         if direction == "in":
-            y_bias = min(face_cy, 0.5) if face_cy < 0.55 else 0.38
+            y_bias = min(zoom_anchor_y, 0.5) if zoom_anchor_y < 0.55 else 0.38
             y_expr = f"max(0\\,min(ih-ih/zoom\\,ih*{y_bias:.2f}-(ih/zoom/2)))"
         else:
             y_expr = "ih/2-(ih/zoom/2)"
@@ -264,9 +279,10 @@ _ASS_COLORS = {
     "red":    "&H000000FF",
 }
 
-_POSITIONS = {"top", "bottom", "left", "right", "center"}
+_POSITIONS = {"top", "bottom", "left", "right", "center", "free"}
 _MODES = {"word", "phrase", "sentence"}
 _EMPHASIS = {"pop", "punch", "calm"}
+_ANCHORS = set(range(1, 10))
 
 
 def _ts(t: float) -> str:
@@ -285,9 +301,66 @@ def _pick(value: object, allowed: set[str], fallback: str) -> str:
     return v if v in allowed else fallback
 
 
+def _clamp_float(value: object, fallback: float, low: float = 0.0, high: float = 1.0) -> float:
+    try:
+        return min(high, max(low, float(value)))
+    except Exception:
+        return fallback
+
+
+def _clamp_int(value: object, fallback: int, allowed: set[int]) -> int:
+    try:
+        v = int(value)
+    except Exception:
+        return fallback
+    return v if v in allowed else fallback
+
+
+def _normalise_bbox(value: object) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        coords = [float(v) for v in value]
+    except Exception:
+        return None
+    if max(abs(v) for v in coords) > 1.5:
+        return None
+    x1, y1, x2, y2 = coords
+    x1, x2 = sorted((min(1.0, max(0.0, x1)), min(1.0, max(0.0, x2))))
+    y1, y2 = sorted((min(1.0, max(0.0, y1)), min(1.0, max(0.0, y2))))
+    if x2 - x1 < 0.02 or y2 - y1 < 0.02:
+        return None
+    return [x1, y1, x2, y2]
+
+
+def _caption_anchor_for(x: float, y: float) -> int:
+    if y < 0.34:
+        return 8 if 0.30 <= x <= 0.70 else 7 if x < 0.5 else 9
+    if y > 0.66:
+        return 2 if 0.30 <= x <= 0.70 else 1 if x < 0.5 else 3
+    return 5 if 0.34 <= x <= 0.66 else 4 if x < 0.5 else 6
+
+
+def _safe_caption_point(subject_x: float, subject_y: float, seg_idx: int) -> tuple[float, float, int]:
+    """Pick a varied but readable empty-ish zone opposite the main subject."""
+    left_side = subject_x < 0.50
+    high_subject = subject_y < 0.42
+    low_subject = subject_y > 0.62
+
+    candidates = [
+        (0.68 if left_side else 0.32, 0.72 if high_subject else 0.24 if low_subject else 0.76),
+        (0.72 if left_side else 0.28, 0.50),
+        (0.50, 0.18 if subject_y > 0.45 else 0.82),
+        (0.50, 0.72),
+    ]
+    x, y = candidates[seg_idx % len(candidates)]
+    return x, y, _caption_anchor_for(x, y)
+
+
 def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
     """Validate model output and fill HRE fields used by the renderer."""
     an = dict(analysis or {})
+    subject_bbox = _normalise_bbox(an.get("subject_bbox"))
     energy = _pick(an.get("energy_level"), {"high", "medium", "low"}, "medium")
     moment = _pick(
         an.get("moment_type"),
@@ -299,18 +372,41 @@ def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
     if energy == "medium" and moment not in {"context", "transition"}:
         fallback_mode = "phrase"
 
-    pos = _pick(an.get("subtitle_position"), _POSITIONS, "bottom")
+    if subject_bbox:
+        subject_x = (subject_bbox[0] + subject_bbox[2]) / 2.0
+        subject_y = (subject_bbox[1] + subject_bbox[3]) / 2.0
+    else:
+        subject_x = _clamp_float(an.get("face_cx"), 0.5)
+        subject_y = _clamp_float(an.get("face_cy"), 0.38)
+
+    pos = _pick(an.get("subtitle_position"), _POSITIONS, "free")
     mode = _pick(an.get("subtitle_mode"), _MODES, fallback_mode)
     emphasis = _pick(an.get("subtitle_emphasis"), _EMPHASIS, "punch" if mode == "word" else "calm")
     color = _pick(an.get("subtitle_color"), set(_ASS_COLORS), "white")
     zoom_direction = _pick(an.get("zoom_direction"), {"in", "out", "hold"}, "in")
     zoom_speed = _pick(an.get("zoom_speed"), {"fast", "slow"}, "slow")
 
-    try:
-        face_cx = min(1.0, max(0.0, float(an.get("face_cx", 0.5))))
-        face_cy = min(1.0, max(0.0, float(an.get("face_cy", 0.38))))
-    except Exception:
-        face_cx, face_cy = 0.5, 0.38
+    face_cx = _clamp_float(an.get("face_cx"), subject_x)
+    face_cy = _clamp_float(an.get("face_cy"), subject_y)
+    zoom_anchor_x = _clamp_float(an.get("zoom_anchor_x"), face_cx)
+    zoom_anchor_y = _clamp_float(an.get("zoom_anchor_y"), face_cy)
+
+    fallback_x, fallback_y, fallback_anchor = _safe_caption_point(subject_x, subject_y, seg_idx)
+    caption_x = _clamp_float(an.get("caption_x"), fallback_x, 0.10, 0.90)
+    caption_y = _clamp_float(an.get("caption_y"), fallback_y, 0.12, 0.88)
+    caption_anchor = _clamp_int(an.get("caption_anchor"), fallback_anchor, _ANCHORS)
+    caption_max_width_pct = _clamp_float(
+        an.get("caption_max_width_pct"),
+        0.58 if mode != "sentence" else 0.72,
+        0.35,
+        0.82,
+    )
+
+    if subject_bbox:
+        x1, y1, x2, y2 = subject_bbox
+        overlaps_subject = (x1 - 0.08) <= caption_x <= (x2 + 0.08) and (y1 - 0.08) <= caption_y <= (y2 + 0.08)
+        if overlaps_subject:
+            caption_x, caption_y, caption_anchor = fallback_x, fallback_y, fallback_anchor
 
     if seg_idx == 0:
         zoom_direction, zoom_speed = "in", "fast"
@@ -326,7 +422,14 @@ def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
         "face_detected": bool(an.get("face_detected", False)),
         "face_cx": face_cx,
         "face_cy": face_cy,
+        "subject_bbox": subject_bbox,
+        "zoom_anchor_x": zoom_anchor_x,
+        "zoom_anchor_y": zoom_anchor_y,
         "subtitle_position": pos,
+        "caption_x": caption_x,
+        "caption_y": caption_y,
+        "caption_anchor": caption_anchor,
+        "caption_max_width_pct": caption_max_width_pct,
         "subtitle_mode": mode,
         "subtitle_emphasis": emphasis,
         "subtitle_color": color,
@@ -344,11 +447,14 @@ def _build_hre_plan(segments: list[dict], analyses: list[dict]) -> list[dict]:
 
     # If the model repeats the same caption treatment for every segment, rotate
     # through safe defaults so HRE visibly changes across the clip.
-    if len(plan) > 1 and len({(p["subtitle_position"], p["subtitle_mode"]) for p in plan}) == 1:
-        positions = ["bottom", "top", "left", "bottom", "right", "top"]
+    if len(plan) > 1 and len({(round(p["caption_x"], 2), round(p["caption_y"], 2), p["subtitle_mode"]) for p in plan}) == 1:
+        positions = ["free", "free", "free", "free", "free", "free"]
+        coords = [(0.50, 0.76), (0.50, 0.18), (0.28, 0.56), (0.72, 0.52), (0.50, 0.82), (0.50, 0.22)]
         modes = ["word", "sentence", "phrase", "word", "sentence", "phrase"]
         for i, p in enumerate(plan):
             p["subtitle_position"] = positions[i % len(positions)]
+            p["caption_x"], p["caption_y"] = coords[i % len(coords)]
+            p["caption_anchor"] = _caption_anchor_for(p["caption_x"], p["caption_y"])
             p["subtitle_mode"] = modes[i % len(modes)]
             if p["subtitle_mode"] == "word":
                 p["subtitle_emphasis"] = "punch"
@@ -599,38 +705,30 @@ def _build_subtitle_events(
 
 
 def _subtitle_tag(plan: dict) -> tuple[str, int]:
-    pos = plan["subtitle_position"]
     mode = plan["subtitle_mode"]
     energy = plan["energy_level"]
     emphasis = plan["subtitle_emphasis"]
     color = _ASS_COLORS.get(plan["subtitle_color"], "&H00FFFFFF")
-
-    anchors = {
-        "top": (8, 540, 230),
-        "bottom": (2, 540, 1660),
-        "left": (4, 95, 960),
-        "right": (6, 985, 960),
-        "center": (5, 540, 960),
-    }
-    alignment, x, y = anchors.get(pos, anchors["bottom"])
+    alignment = int(plan.get("caption_anchor", 5))
+    x = round(_clamp_float(plan.get("caption_x"), 0.5, 0.08, 0.92) * 1080)
+    y = round(_clamp_float(plan.get("caption_y"), 0.75, 0.10, 0.90) * 1920)
+    max_width_px = max(360, min(886, int(_clamp_float(plan.get("caption_max_width_pct"), 0.62, 0.35, 0.82) * 1080)))
 
     if mode == "sentence":
-        font_size = 66 if energy != "high" else 74
-        max_chars = 34
+        font_size = 56 if energy != "high" else 62
     elif mode == "phrase":
-        font_size = 82 if energy != "low" else 76
-        max_chars = 24
+        font_size = 68 if energy != "low" else 62
     else:
-        font_size = 102 if energy == "high" else 92
-        max_chars = 18
+        font_size = 80 if energy == "high" else 72
 
-    if pos in {"left", "right"}:
-        font_size -= 8
-        max_chars = min(max_chars, 22)
+    if alignment in {4, 5, 6}:
+        font_size = max(54, font_size - 4)
+
+    max_chars = max(8, min(34, int(max_width_px / (font_size * 0.58))))
 
     base = (
         f"{{\\an{alignment}\\pos({x},{y})\\1c{color}&\\fs{font_size}"
-        "\\b1\\bord5\\shad1\\q2}}"
+        "\\b1\\bord5\\shad1\\q2}"
     )
     if emphasis in {"pop", "punch"} or mode == "word":
         base += "{\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
