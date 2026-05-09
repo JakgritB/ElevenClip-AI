@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8001/v1")
+VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
 VLLM_MODEL = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "EMPTY")
 
@@ -153,6 +153,113 @@ def _default_analysis() -> dict:
         "face_bbox": None,
         "highlight_reason": "Vision model unavailable — using audio+text signals only",
         "tiktok_potential": 0.4,
+    }
+
+
+HRE_SEGMENT_PROMPT = """Analyze this video frame for high-retention TikTok editing decisions.
+
+Segment {seg_idx} of {n_total}. Transcript: "{context}"
+
+Respond ONLY with valid JSON — no markdown:
+{{
+  "zoom_direction": "<in|out|hold>",
+  "zoom_speed": "<fast|slow>",
+  "face_detected": <true|false>,
+  "face_cx": <0.0-1.0>,
+  "face_cy": <0.0-1.0>,
+  "subtitle_position": "<top|bottom>",
+  "subtitle_color": "<white|yellow|cyan|orange|green>",
+  "energy_level": "<high|medium|low>",
+  "moment_type": "<hook|punchline|context|reaction|transition>"
+}}
+
+Rules:
+- seg_idx==0: always zoom_direction=in, zoom_speed=fast (hook the viewer)
+- zoom IN fast: punchlines, reactions, peak energy
+- zoom IN slow: context, buildup, moderate energy
+- zoom OUT: reveals, breathing room after intensity
+- HOLD: stable content, text-heavy moments
+- subtitle TOP: face is in bottom half → put text at top
+- subtitle BOTTOM: face is in top half → text at bottom
+- face_cx/face_cy: face center as 0.0-1.0 fraction of frame
+"""
+
+
+def analyze_frame_for_hre(
+    frame_path: "Path",
+    context: str = "",
+    seg_idx: int = 0,
+    n_total: int = 1,
+) -> dict:
+    """Per-segment HRE: zoom direction, subtitle position+color for this moment."""
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(base_url=VLLM_BASE_URL, api_key=VLLM_API_KEY)
+        if not Path(frame_path).exists():
+            return _default_hre_analysis(seg_idx, n_total)
+
+        b64 = _encode_image(str(frame_path))
+        prompt = HRE_SEGMENT_PROMPT.format(
+            seg_idx=seg_idx, n_total=n_total, context=context[:200]
+        )
+        response = client.chat.completions.create(
+            model=VLLM_MODEL,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+            max_tokens=200,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            parts = raw.split("```")
+            raw = parts[1] if len(parts) > 1 else raw
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        analysis = json.loads(raw.strip())
+        logger.debug(
+            f"HRE seg {seg_idx}/{n_total}: "
+            f"zoom={analysis.get('zoom_direction')}({analysis.get('zoom_speed')}) "
+            f"sub={analysis.get('subtitle_position')}/{analysis.get('subtitle_color')} "
+            f"type={analysis.get('moment_type')}"
+        )
+        return analysis
+
+    except Exception as e:
+        logger.warning(f"HRE frame analysis failed (seg {seg_idx}): {e}")
+        return _default_hre_analysis(seg_idx, n_total)
+
+
+def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
+    """Fallback with varied decisions based on position in clip."""
+    if seg_idx == 0:
+        zoom_dir, zoom_speed, moment = "in", "fast", "hook"
+    elif seg_idx == n_total - 1:
+        zoom_dir, zoom_speed, moment = "out", "slow", "transition"
+    elif seg_idx % 3 == 1:
+        zoom_dir, zoom_speed, moment = "hold", "slow", "context"
+    else:
+        zoom_dir, zoom_speed, moment = "in", "slow", "reaction"
+
+    _colors    = ["yellow", "white",  "cyan",   "orange", "white",  "yellow"]
+    _positions = ["bottom", "top",    "bottom", "top",    "bottom", "top"]
+
+    return {
+        "zoom_direction":    zoom_dir,
+        "zoom_speed":        zoom_speed,
+        "face_detected":     False,
+        "face_cx":           0.5,
+        "face_cy":           0.38,
+        "subtitle_position": _positions[seg_idx % len(_positions)],
+        "subtitle_color":    _colors[seg_idx % len(_colors)],
+        "energy_level":      "medium",
+        "moment_type":       moment,
     }
 
 
