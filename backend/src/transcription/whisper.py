@@ -94,48 +94,50 @@ def transcribe(
         else:
             dtype = torch.float32
 
-        def _build_pipe(dt):
-            return pipeline(
+        def _run_on_cpu(gk):
+            logger.warning("Whisper: running on CPU (GPU unavailable or OOM)")
+            pipe_cpu = pipeline(
                 "automatic-speech-recognition",
                 model=f"openai/whisper-{model_size}",
-                torch_dtype=dt,
-                device=device,
-                model_kwargs={"attn_implementation": "sdpa"},
+                torch_dtype=torch.float32,
+                device="cpu",
             )
-
-        try:
-            pipe = _build_pipe(dtype)
-        except Exception:
-            logger.warning("Whisper: falling back to float32")
-            pipe = _build_pipe(torch.float32)
+            return pipe_cpu(str(audio_path), batch_size=1,
+                            return_timestamps="word", generate_kwargs=gk)
 
         generate_kwargs = {"task": task}
         if clip_lang_code:
             generate_kwargs["language"] = clip_lang_code
 
+        # Check free VRAM — if GPU is nearly full, go straight to CPU
+        use_gpu = device == "cuda"
+        if use_gpu:
+            try:
+                free_bytes = torch.cuda.mem_get_info(0)[0]
+                if free_bytes < 8 * 1024 ** 3:  # < 8 GB free
+                    logger.warning(f"Whisper: only {free_bytes/1024**3:.1f} GB free — using CPU")
+                    use_gpu = False
+            except Exception:
+                pass
+
         try:
-            result = pipe(
-                str(audio_path),
-                batch_size=batch_size,
-                return_timestamps="word",
-                generate_kwargs=generate_kwargs,
-            )
-        except RuntimeError as e:
-            if "HIPBLAS" in str(e) or "CUDA" in str(e):
-                # GPU error — retry on CPU with smaller batch
-                logger.warning(f"GPU error in Whisper, retrying on CPU: {e}")
-                pipe_cpu = pipeline(
+            if not use_gpu:
+                result = _run_on_cpu(generate_kwargs)
+            else:
+                pipe = pipeline(
                     "automatic-speech-recognition",
                     model=f"openai/whisper-{model_size}",
-                    torch_dtype=torch.float32,
-                    device="cpu",
+                    torch_dtype=dtype,
+                    device=device,
+                    model_kwargs={"attn_implementation": "sdpa"},
                 )
-                result = pipe_cpu(
-                    str(audio_path),
-                    batch_size=1,
-                    return_timestamps="word",
-                    generate_kwargs=generate_kwargs,
-                )
+                result = pipe(str(audio_path), batch_size=batch_size,
+                              return_timestamps="word", generate_kwargs=generate_kwargs)
+        except (RuntimeError, Exception) as e:
+            err = str(e)
+            if any(k in err for k in ("HIPBLAS", "HIP", "out of memory", "OutOfMemory", "CUDA")):
+                logger.warning(f"GPU error in Whisper ({err[:120]}), retrying on CPU")
+                result = _run_on_cpu(generate_kwargs)
             else:
                 raise
 
