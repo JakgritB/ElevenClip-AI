@@ -170,8 +170,8 @@ def _build_zoom_exprs(
     direction     = analysis.get("zoom_direction", "in")
     speed         = analysis.get("zoom_speed", "slow")
     face_detected = bool(analysis.get("face_detected", False))
-    face_cx       = float(analysis.get("face_cx", 0.5))
-    face_cy       = float(analysis.get("face_cy", 0.38))
+    face_cx       = float(analysis.get("face_cx") or 0.5)
+    face_cy       = float(analysis.get("face_cy") or 0.38)
 
     if direction == "in":
         if speed == "fast":
