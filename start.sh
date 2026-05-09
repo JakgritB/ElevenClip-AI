@@ -19,6 +19,7 @@ NEXTJS_PID=$!
 # ── 3. FastAPI on :8080  ──────────────────────────────────────────────────────
 # vLLM starts on-demand via vllm_manager.py when the first job arrives.
 echo "[3/3] FastAPI on :8080 (vLLM starts on first job)..."
+export PYTHONPATH=/app/backend:/app
 export VLLM_ON_DEMAND=true
 export VLLM_PORT=8000
 export VLLM_IDLE_TIMEOUT=300

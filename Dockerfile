@@ -3,6 +3,8 @@ FROM rocm/pytorch:rocm6.3_ubuntu22.04_py3.10_pytorch_release_2.3.0
 
 WORKDIR /app
 
+ENV PYTHONPATH="/app/backend:/app"
+
 # System dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
