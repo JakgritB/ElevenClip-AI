@@ -82,9 +82,10 @@ class _VLLMManager:
         if progress_cb:
             progress_cb("Starting AI model (Qwen3-VL)… ~2 min first time")
 
+        import sys
         self._proc = subprocess.Popen(
             [
-                "python", "-m", "vllm.entrypoints.openai.api_server",
+                sys.executable, "-m", "vllm.entrypoints.openai.api_server",
                 "--model", VLLM_MODEL,
                 "--device", "rocm",
                 "--port", str(VLLM_PORT),
