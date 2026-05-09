@@ -1,4 +1,4 @@
-# ElevenClip AI — HuggingFace Spaces (AMD ROCm) — Qwen2.5-VL-7B
+# ElevenClip AI — HuggingFace Spaces (AMD ROCm)
 FROM rocm/pytorch:rocm6.3_ubuntu22.04_py3.10_pytorch_release_2.3.0
 
 WORKDIR /app
@@ -6,6 +6,7 @@ WORKDIR /app
 # System dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    nginx \
     curl \
     git \
     nodejs \
@@ -16,32 +17,40 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
-# vLLM with ROCm support (installed separately from main requirements)
+# vLLM with ROCm support
 RUN pip install --no-cache-dir \
     "vllm>=0.6.0" \
     --extra-index-url https://download.pytorch.org/whl/rocm6.2
 
 COPY backend/ /app/backend/
 
-# ─── Frontend (Next.js) ────────────────────────────────────────────────────
+# ─── Frontend (Next.js standalone build) ──────────────────────────────────
 COPY frontend/package*.json /app/frontend/
 RUN cd /app/frontend && npm ci --production=false
 
 COPY frontend/ /app/frontend/
 
-# API URL is relative (same origin) in production
+# Relative API URL — nginx proxies /api/* and /ws/* to FastAPI :8080
 ENV NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_DEMO_ENABLED="true"
 
 RUN cd /app/frontend && npm run build
 
+# ─── nginx config ──────────────────────────────────────────────────────────
+COPY nginx.conf /app/nginx.conf
+
 # ─── Runtime directories ───────────────────────────────────────────────────
-RUN mkdir -p /tmp/elevnclip /root/.cache/huggingface
+RUN mkdir -p /tmp/elevnclip /root/.cache/huggingface /root/ElevenClip-AI/demo_videos
 
 # ─── Startup ──────────────────────────────────────────────────────────────
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 EXPOSE 7860
+
+# vLLM managed on-demand by vllm_manager.py (not started at container startup)
+ENV VLLM_ON_DEMAND="true"
+ENV VLLM_PORT="8000"
+ENV VLLM_IDLE_TIMEOUT="300"
 
 CMD ["/app/start.sh"]

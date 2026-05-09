@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty string = same-origin (works behind nginx on HF Spaces).
+// Set NEXT_PUBLIC_API_URL for separate deployments (e.g. "http://server:8080").
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export interface ProcessSettings {
   youtube_url?: string;
@@ -89,13 +91,21 @@ export async function startProcessing(
   return session_id;
 }
 
+function _wsBase(): string {
+  // If explicit API_BASE is set, derive ws:// from it.
+  // Otherwise use the current page's host (works with nginx same-origin proxy).
+  if (API_BASE) return API_BASE.replace(/^http/, "ws");
+  if (typeof window === "undefined") return "ws://localhost:8080";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}`;
+}
+
 export function connectProgressWS(
   sessionId: string,
   onMessage: (data: { stage: string; pct: number; message: string }) => void,
   onClose?: () => void
 ): WebSocket {
-  const wsBase = API_BASE.replace("http", "ws");
-  const ws = new WebSocket(`${wsBase}/ws/progress/${sessionId}`);
+  const ws = new WebSocket(`${_wsBase()}/ws/progress/${sessionId}`);
   ws.onmessage = (e) => onMessage(JSON.parse(e.data));
   ws.onclose = () => onClose?.();
   return ws;
