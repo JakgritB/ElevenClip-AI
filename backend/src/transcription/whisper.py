@@ -120,6 +120,7 @@ def transcribe(
             except Exception:
                 pass
 
+        pipe = None
         try:
             if not use_gpu:
                 result = _run_on_cpu(generate_kwargs)
@@ -140,6 +141,13 @@ def transcribe(
                 result = _run_on_cpu(generate_kwargs)
             else:
                 raise
+        finally:
+            if pipe is not None:
+                del pipe
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
 
         segments = _build_segments(result, sub_lang_code)
         char_level = sub_lang_code in CHAR_LEVEL_LANGUAGES
