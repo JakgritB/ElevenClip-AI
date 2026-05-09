@@ -74,7 +74,7 @@ def transcribe(
         if sub_lang_code == "en":
             task = "translate"  # Whisper built-in translate → English
         else:
-            task = "transcribe"  # Transcribe first, then translate via Qwen3
+            task = "transcribe"  # Non-English targets keep transcription in the selected language.
 
     logger.info(f"Whisper: task={task}, clip_lang={clip_lang_code}, sub_lang={sub_lang_code}, model={model_size}")
 

@@ -2,6 +2,10 @@
 // Set NEXT_PUBLIC_API_URL for separate deployments (e.g. "http://server:8080").
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+function demoHeaders(accessCode?: string): HeadersInit {
+  return accessCode?.trim() ? { "X-Demo-Key": accessCode.trim() } : {};
+}
+
 export interface ProcessSettings {
   youtube_url?: string;
   use_demo_video?: boolean;
@@ -64,10 +68,10 @@ export interface SessionResult {
   error?: string;
 }
 
-export async function getVideoInfo(url: string) {
+export async function getVideoInfo(url: string, accessCode?: string) {
   const res = await fetch(`${API_BASE}/api/video-info`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...demoHeaders(accessCode) },
     body: JSON.stringify({ url }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -76,7 +80,8 @@ export async function getVideoInfo(url: string) {
 
 export async function startProcessing(
   settings: ProcessSettings,
-  file?: File
+  file?: File,
+  accessCode?: string
 ): Promise<string> {
   const formData = new FormData();
   formData.append("settings_json", JSON.stringify(settings));
@@ -84,6 +89,7 @@ export async function startProcessing(
 
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
+    headers: demoHeaders(accessCode),
     body: formData,
   });
   if (!res.ok) throw new Error(await res.text());

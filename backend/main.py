@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -47,12 +47,23 @@ app.add_middleware(
 WORK_DIR = Path(os.getenv("WORK_DIR", "/tmp/elevnclip"))
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 
+DEMO_ACCESS_CODE = os.getenv("DEMO_ACCESS_CODE", "").strip()
+MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
+
 app.mount("/downloads", StaticFiles(directory=str(WORK_DIR)), name="downloads")
 
 # In-memory session store + WebSocket registry
 sessions: dict[str, dict] = {}
 ws_connections: dict[str, WebSocket] = {}
 ws_queues: dict[str, list[dict]] = {}  # buffer progress messages until WS connects
+active_jobs: set[str] = set()
+
+
+def _require_access(x_demo_key: Optional[str]) -> None:
+    """Optional public-demo guard for expensive GPU endpoints."""
+    if DEMO_ACCESS_CODE and (x_demo_key or "").strip() != DEMO_ACCESS_CODE:
+        raise HTTPException(403, "Access code required for generation")
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────
@@ -169,7 +180,8 @@ async def health():
 
 
 @app.post("/api/video-info")
-async def video_info(req: VideoInfoRequest):
+async def video_info(req: VideoInfoRequest, x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
+    _require_access(x_demo_key)
     try:
         return get_video_info(req.url)
     except Exception as e:
@@ -180,8 +192,13 @@ async def video_info(req: VideoInfoRequest):
 async def process(
     settings_json: str = Form(...),
     file: Optional[UploadFile] = File(None),
+    x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key"),
 ):
     """Main pipeline endpoint. Returns session_id immediately; progress via WebSocket."""
+    _require_access(x_demo_key)
+    if len(active_jobs) >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(429, "GPU is busy. Please try again in a few minutes.")
+
     settings = ProcessSettings(**json.loads(settings_json))
     session_id = str(uuid.uuid4())
     session_dir = WORK_DIR / session_id
@@ -195,7 +212,10 @@ async def process(
     if file:
         file_bytes = await file.read()
         file_name = file.filename or "upload.mp4"
+        if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
+            raise HTTPException(413, f"File too large. Max upload size is {MAX_UPLOAD_MB} MB.")
 
+    active_jobs.add(session_id)
     asyncio.create_task(_run_pipeline(session_id, session_dir, settings, file_bytes, file_name))
     return {"session_id": session_id}
 
@@ -266,7 +286,7 @@ async def _run_pipeline(
             None, lambda: sample_frames(video_path, scenes, frames_dir)
         )
 
-        # ── 5. Qwen3-VL multimodal analysis (concurrent requests to vLLM) ─
+        # ── 5. Qwen2.5-VL multimodal analysis (concurrent requests to vLLM) ─
         n_scenes = len(scenes_with_frames)
         await send_progress(session_id, "vision", 58, "Ensuring AI model is running...")
         await loop.run_in_executor(
@@ -277,7 +297,7 @@ async def _run_pipeline(
                 )
             ),
         )
-        await send_progress(session_id, "vision", 60, f"Qwen3-VL analyzing {n_scenes} scenes (vision + audio + text fusion)...")
+        await send_progress(session_id, "vision", 60, f"Qwen2.5-VL analyzing {n_scenes} scenes (vision + audio + text fusion)...")
         scenes_analyzed = await analyze_scenes_batch_async(
             scenes_with_frames,
             transcript.get("segments", []),
@@ -355,6 +375,8 @@ async def _run_pipeline(
         logger.exception(f"Pipeline failed [{session_id}]")
         sessions[session_id] = {"status": "error", "error": str(e), "clips": []}
         await send_progress(session_id, "error", 0, f"Pipeline error: {e}")
+    finally:
+        active_jobs.discard(session_id)
 
 
 # ─── Editor API ───────────────────────────────────────────────────────────
@@ -423,14 +445,16 @@ async def get_vllm_status():
 
 
 @app.post("/api/vllm/stop")
-async def stop_vllm():
+async def stop_vllm(x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
+    _require_access(x_demo_key)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, vllm_stop)
     return {"ok": True, "message": "vLLM stopped — will restart automatically on next job"}
 
 
 @app.post("/api/vllm/start")
-async def start_vllm():
+async def start_vllm(x_demo_key: Optional[str] = Header(None, alias="X-Demo-Key")):
+    _require_access(x_demo_key)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, ensure_vllm_running)
     return {"ok": True, "status": vllm_status()}

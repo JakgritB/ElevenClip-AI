@@ -11,6 +11,9 @@ const L = {
     channelLabel: "Channel Description",
     channelOpt: "(optional — helps AI analyze better)",
     channelPlaceholder: "e.g. English gaming channel focused on funny reactions and horror games",
+    accessLabel: "Demo Access Code",
+    accessOpt: "(required for GPU generation when enabled)",
+    accessPlaceholder: "Enter the code shared by the team",
   },
   th: {
     upload: "อัปโหลดไฟล์",
@@ -19,6 +22,9 @@ const L = {
     channelLabel: "คำอธิบายช่อง",
     channelOpt: "(ไม่บังคับ — ช่วย AI วิเคราะห์ได้ดีขึ้น)",
     channelPlaceholder: "เช่น: ช่องเกมมิ่งภาษาไทย เน้นตลก reaction และ horror game",
+    accessLabel: "รหัสเข้าใช้เดโม",
+    accessOpt: "(จำเป็นเมื่อเปิดการป้องกัน GPU)",
+    accessPlaceholder: "ใส่รหัสที่ทีมแชร์ให้",
   },
   zh: {
     upload: "上传文件",
@@ -27,6 +33,9 @@ const L = {
     channelLabel: "频道描述",
     channelOpt: "（可选 — 帮助 AI 更好地分析）",
     channelPlaceholder: "例：中文游戏频道，专注搞笑反应和恐怖游戏",
+    accessLabel: "演示访问码",
+    accessOpt: "（启用 GPU 保护时需要）",
+    accessPlaceholder: "输入团队分享的访问码",
   },
 } as const;
 
@@ -36,10 +45,19 @@ interface Props {
   onFileSelect: (file: File) => void;
   onChannelDesc: (desc: string) => void;
   channelDesc: string;
+  accessCode: string;
+  onAccessCode: (code: string) => void;
   uiLang?: Lang;
 }
 
-export default function VideoUpload({ onFileSelect, onChannelDesc, channelDesc, uiLang = "en" }: Props) {
+export default function VideoUpload({
+  onFileSelect,
+  onChannelDesc,
+  channelDesc,
+  accessCode,
+  onAccessCode,
+  uiLang = "en",
+}: Props) {
   const lbl = L[uiLang];
   const [fileName, setFileName] = useState("");
 
@@ -94,6 +112,20 @@ export default function VideoUpload({ onFileSelect, onChannelDesc, channelDesc, 
           placeholder={lbl.channelPlaceholder}
           rows={1}
           className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-violet-500 transition resize-none"
+        />
+      </div>
+
+      {/* Access code */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-white/70">
+          {lbl.accessLabel} <span className="text-white/30">{lbl.accessOpt}</span>
+        </label>
+        <input
+          type="password"
+          value={accessCode}
+          onChange={(e) => onAccessCode(e.target.value)}
+          placeholder={lbl.accessPlaceholder}
+          className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-violet-500 transition"
         />
       </div>
     </div>

@@ -131,9 +131,9 @@ export default function GenerationProgress({ stage, pct, message, uiLang = "en" 
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-3 py-2 text-xs text-blue-200 flex items-center gap-2">
           <Brain size={12} className="shrink-0" />
           <span>
-            {uiLang === "th" ? "Multimodal AI: Whisper ROCm · Qwen3-VL · librosa"
-             : uiLang === "zh" ? "多模态 AI: Whisper ROCm · Qwen3-VL · librosa"
-             : "Multimodal AI: Whisper ROCm · Qwen3-VL · librosa"}
+            {uiLang === "th" ? "Multimodal AI: Whisper ROCm · Qwen2.5-VL · librosa"
+             : uiLang === "zh" ? "多模态 AI: Whisper ROCm · Qwen2.5-VL · librosa"
+             : "Multimodal AI: Whisper ROCm · Qwen2.5-VL · librosa"}
           </span>
         </div>
       )}

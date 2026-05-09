@@ -28,6 +28,7 @@ const T = {
     generateHRE: "Generate with HRE",
     tryDemo: "Try Demo",
     demoHint: "Demo mode — works without backend",
+    accessRequired: "Enter the demo access code to run real GPU generation.",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
   th: {
@@ -43,6 +44,7 @@ const T = {
     generateHRE: "สร้างด้วย HRE",
     tryDemo: "ลองดูตัวอย่าง",
     demoHint: "โหมด Demo — ไม่ต้องเชื่อม backend",
+    accessRequired: "ใส่รหัสเดโมก่อน เพื่อรันของจริงบน GPU",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
   zh: {
@@ -58,6 +60,7 @@ const T = {
     generateHRE: "HRE 生成",
     tryDemo: "试用演示",
     demoHint: "演示模式 — 无需后端连接",
+    accessRequired: "请输入演示访问码以运行真实 GPU 生成。",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
 } as const;
@@ -67,6 +70,7 @@ type Step = 1 | 2 | 3 | "generating";
 
 // Set NEXT_PUBLIC_DEMO_ENABLED=false in production to hide the demo button
 const DEMO_ENABLED = process.env.NEXT_PUBLIC_DEMO_ENABLED !== "false";
+const DEMO_ONLY_PUBLIC = process.env.NEXT_PUBLIC_DEMO_ONLY === "true";
 
 const FONT_MAP: Record<string, string> = {
   thai: "Noto Sans Thai",
@@ -81,7 +85,7 @@ const DEMO_STAGES = [
   { stage: "audio",     pct: 22, message: "Extracting audio track..." },
   { stage: "scenes",    pct: 35, message: "PySceneDetect — 24 scenes found" },
   { stage: "transcribe",pct: 50, message: "Whisper ROCm — transcribing 3m 42s..." },
-  { stage: "vision",    pct: 65, message: "Qwen3-VL analyzing frames + transcript..." },
+  { stage: "vision",    pct: 65, message: "Qwen2.5-VL analyzing frames + transcript..." },
   { stage: "scoring",   pct: 80, message: "score = 0.4×vision + 0.35×audio + 0.25×text" },
   { stage: "cutting",   pct: 90, message: "Cutting 3 highlight clips via ffmpeg-amf..." },
   { stage: "subtitles", pct: 96, message: "Generating ASS subtitles (pysubs2)..." },
@@ -91,16 +95,23 @@ const DEMO_STAGES = [
 export default function HomePage() {
   const router = useRouter();
   const [uiLang, setUiLang] = useState<Lang>("en");
+  const [accessCode, setAccessCode] = useState("");
   const t = T[uiLang];
 
   useEffect(() => {
     const saved = localStorage.getItem("elevnclip-lang") as Lang | null;
     if (saved && (["en", "th", "zh"] as string[]).includes(saved)) setUiLang(saved);
+    setAccessCode(localStorage.getItem("elevnclip_access_code") ?? "");
   }, []);
 
   const handleLangChange = (lang: Lang) => {
     setUiLang(lang);
     localStorage.setItem("elevnclip-lang", lang);
+  };
+
+  const handleAccessCodeChange = (code: string) => {
+    setAccessCode(code);
+    localStorage.setItem("elevnclip_access_code", code);
   };
 
   const [step, setStep] = useState<Step>(1);
@@ -154,16 +165,35 @@ export default function HomePage() {
     if (demoTimerRef.current) clearInterval(demoTimerRef.current);
   }, []);
 
+  const runMockDemo = () => {
+    let i = 0;
+    if (demoTimerRef.current) clearInterval(demoTimerRef.current);
+    demoTimerRef.current = setInterval(() => {
+      if (i < DEMO_STAGES.length) {
+        setProgress(DEMO_STAGES[i]);
+        if (DEMO_STAGES[i].stage === "done") {
+          clearInterval(demoTimerRef.current!);
+          setTimeout(() => router.push("/editor?session=demo"), 600);
+        }
+        i++;
+      }
+    }, 900);
+  };
+
   const handleGenerate = async () => {
     if (!canProceedStep1) return;
     setStep("generating");
+    if (DEMO_ONLY_PUBLIC && !accessCode.trim()) {
+      setProgress({ stage: "error", pct: 0, message: t.accessRequired });
+      return;
+    }
     try {
       const settings: ProcessSettings = {
         channel_description: channelDesc,
         ...clipSettings,
         style_config: clipSettings.mode === "hre" ? {} : { ...styleConfig, subtitle_language: clipSettings.subtitle_language },
       };
-      const sessionId = await startProcessing(settings, videoFile ?? undefined);
+      const sessionId = await startProcessing(settings, videoFile ?? undefined, accessCode);
       localStorage.setItem("elevnclip_session", sessionId);
 
       let wsAlive = false;
@@ -199,6 +229,10 @@ export default function HomePage() {
 
   const handleDemo = async () => {
     setStep("generating");
+    if (DEMO_ONLY_PUBLIC && !accessCode.trim()) {
+      runMockDemo();
+      return;
+    }
     try {
       const settings: ProcessSettings = {
         use_demo_video: true,
@@ -211,7 +245,7 @@ export default function HomePage() {
         mode: "hre",
         style_config: {},
       };
-      const sessionId = await startProcessing(settings);
+      const sessionId = await startProcessing(settings, undefined, accessCode);
       localStorage.setItem("elevnclip_session", sessionId);
 
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -233,18 +267,7 @@ export default function HomePage() {
       }, 3000);
       setTimeout(() => clearInterval(poll), 600_000);
     } catch {
-      // Fallback to fake demo animation if server unavailable
-      let i = 0;
-      demoTimerRef.current = setInterval(() => {
-        if (i < DEMO_STAGES.length) {
-          setProgress(DEMO_STAGES[i]);
-          if (DEMO_STAGES[i].stage === "done") {
-            clearInterval(demoTimerRef.current!);
-            setTimeout(() => router.push("/editor?session=demo"), 600);
-          }
-          i++;
-        }
-      }, 900);
+      runMockDemo();
     }
   };
 
@@ -258,7 +281,7 @@ export default function HomePage() {
           </div>
           <div>
             <span className="font-bold">ElevenClip AI</span>
-            <span className="ml-2 text-xs text-white/30">AMD ROCm · Qwen3-VL · Whisper</span>
+            <span className="ml-2 text-xs text-white/30">AMD ROCm · Qwen2.5-VL · Whisper</span>
           </div>
         </div>
         <div className="flex gap-1">
@@ -318,6 +341,8 @@ export default function HomePage() {
                   onFileSelect={(f) => setVideoFile(f)}
                   onChannelDesc={setChannelDesc}
                   channelDesc={channelDesc}
+                  accessCode={accessCode}
+                  onAccessCode={handleAccessCodeChange}
                   uiLang={uiLang}
                 />
               </>

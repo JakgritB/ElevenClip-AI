@@ -33,6 +33,7 @@ COPY frontend/ /app/frontend/
 # Relative API URL — nginx proxies /api/* and /ws/* to FastAPI :8080
 ENV NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_DEMO_ENABLED="true"
+ENV NEXT_PUBLIC_DEMO_ONLY="true"
 
 RUN cd /app/frontend && npm run build
 
@@ -52,5 +53,6 @@ EXPOSE 7860
 ENV VLLM_ON_DEMAND="true"
 ENV VLLM_PORT="8000"
 ENV VLLM_IDLE_TIMEOUT="300"
+ENV VLLM_DOCKER_CONTAINER=""
 
 CMD ["/app/start.sh"]

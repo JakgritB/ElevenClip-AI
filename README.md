@@ -2,7 +2,7 @@
 
 > **AMD Developer Hackathon 2026 — Track 3: Vision & Multimodal AI**
 
-Turn any livestream or YouTube video into TikTok-ready highlight clips using **true multimodal AI** — vision, audio, and text analyzed simultaneously on AMD Instinct MI300X.
+Turn livestream recordings or uploaded videos into TikTok-ready highlight clips using **true multimodal AI** — vision, audio, and text analyzed simultaneously on AMD Instinct MI300X.
 
 [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-yellow)](https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ElevenClip-AI)
 [![AMD ROCm](https://img.shields.io/badge/AMD-ROCm%206.3-red)](https://rocm.docs.amd.com/)
@@ -19,7 +19,7 @@ Turn any livestream or YouTube video into TikTok-ready highlight clips using **t
 
 ## What It Does
 
-ElevenClip AI ingests a livestream/YouTube video and automatically finds the best moments to clip for TikTok using three AI modalities working together:
+ElevenClip AI ingests an uploaded video and automatically finds the best moments to clip for TikTok using three AI modalities working together. The backend also keeps optional yt-dlp/YouTube support, but the public demo focuses on uploads because public video platforms can trigger anti-bot restrictions.
 
 | Modality | Model | What it detects |
 |---|---|---|
@@ -27,7 +27,7 @@ ElevenClip AI ingests a livestream/YouTube video and automatically finds the bes
 | **Audio** | insanely-fast-whisper (ROCm) | Word-level transcript + language detection |
 | **Audio Signal** | librosa | RMS energy → loud/quiet moments |
 | **Vision+Text** | Qwen2.5-VL (multimodal) | Frame + transcript context fused together |
-| **Text** | Qwen3 (text-only) | Style keyword matching, emoji selection |
+| **Text** | Python keyword scorer + Qwen2.5-VL text prompt | Style keyword matching, emoji selection |
 
 ### Highlight Scoring Formula
 
@@ -44,7 +44,7 @@ where:
 
 ```
 ┌─ Input ──────────────────────────────────────────────────────────┐
-│  YouTube URL or uploaded video file                              │
+│  Uploaded video file (YouTube backend support is optional)       │
 └──────────────────────────────────────────────────────────────────┘
            │
            ▼
@@ -88,7 +88,7 @@ where:
 │  • pysubs2 ASS            • Silence removal (ffmpeg)             │
 │  • User style config      • Auto-zoom to face (zoompan)          │
 │  • Font/color/animation   • Jump cuts at boundaries              │
-│  • Karaoke/pop/fade       • Qwen3 emoji selection                │
+│  • Karaoke/pop/fade       • Qwen2.5-VL emoji selection          │
 │  • AMD AMF encode         • Impact bold captions                 │
 └──────────────────────────────────────────────────────────────────┘
            │
@@ -131,7 +131,7 @@ AI chooses everything:
 - Silence removal (`ffmpeg silenceremove`)
 - Auto-zoom to face region (`ffmpeg zoompan` using Qwen2.5-VL face_bbox)
 - Jump cuts at scene boundaries
-- Qwen3 selects contextually-appropriate emoji overlay
+- Qwen2.5-VL selects contextually-appropriate emoji overlay
 - Impact 64px bold white captions, word-by-word, pop animation
 
 ---
@@ -143,7 +143,7 @@ AI chooses everything:
 | UI language | ไทย · English · 中文 |
 | Video input language | Auto-detect + 15+ (Whisper) |
 | Subtitle output language | Thai (Noto Sans Thai) · Chinese (Noto Sans SC) · Japanese (Noto Sans JP) · Korean (Noto Sans KR) · English + more |
-| Cross-lingual | Whisper translate → English, then Qwen3 translate to target |
+| Cross-lingual | Whisper translate → English when English subtitles are requested; multilingual transcription/subtitle timing uses Whisper language support |
 | Character-level splitting | Thai and Chinese use character-level subtitle timing (no word spaces) |
 
 ---
@@ -160,34 +160,78 @@ AI chooses everything:
 | Video Processing | **ffmpeg** (AMD AMF hardware encode) |
 | Subtitle Engine | **pysubs2** — full ASS format with karaoke tags |
 | GPU | **AMD Instinct MI300X** via ROCm 6.3 |
-| Frontend | **Next.js 14** App Router + Tailwind CSS + shadcn/ui |
+| Frontend | **Next.js 16.2.4** App Router + Tailwind CSS |
 | Backend | **FastAPI** + WebSocket (real-time progress) |
-| Deployment | HuggingFace Spaces — Docker (AMD GPU Space) |
+| Deployment | HuggingFace Spaces public demo + AMD GPU Cloud backend |
+
+---
+
+## Judge Demo
+
+Public visitors can open the HuggingFace Space and click **Try Demo** to see a simulated flow without using AMD GPU credits. Full AMD MI300X generation is protected by an access code shared only in the lablab.ai submission notes for judges.
+
+Recommended judging flow:
+1. Open the HuggingFace Space.
+2. Click **Try Demo** for the instant public demo.
+3. Enter the judge access code from the lablab.ai submission notes to run real generation on AMD GPU Cloud.
+4. Upload a short MP4 sample for the real run.
 
 ---
 
 ## Local Development
 
-```bash
-# 1. Start vLLM (Qwen2.5-VL) — requires AMD GPU with ROCm
-pip install torch --index-url https://download.pytorch.org/whl/rocm6.2
-pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
-python -m vllm.entrypoints.openai.api_server \
-  --model Qwen/Qwen2.5-VL-7B-Instruct \
-  --port 8001 --device rocm --dtype float16
+For the real development/demo path, run the frontend locally and point it at the AMD GPU Cloud backend:
 
-# 2. Start backend
-cd backend
-pip install -r requirements.txt
-python main.py  # :8000
-
-# 3. Start frontend
-cd frontend
-npm install
-npm run dev  # :3000
+```env
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://129.212.178.101:8080
+NEXT_PUBLIC_DEMO_ENABLED=true
+NEXT_PUBLIC_DEMO_ONLY=false
 ```
 
-For development without a GPU, the pipeline runs with fallback stubs (stubbed Whisper, fallback vision scores).
+```bash
+cd frontend
+npm install
+npm run dev  # http://localhost:3000
+```
+
+The AMD GPU Cloud backend runs FastAPI on `:8080` and vLLM/Qwen2.5-VL on `:8000`. For development without a GPU, the backend can still run with fallback stubs (stubbed Whisper, fallback vision scores).
+
+---
+
+## Safe Public Demo Setup
+
+ElevenClip AI supports three deployment modes:
+
+| Mode | Frontend runs on | Backend/vLLM runs on | Use when |
+|---|---|---|---|
+| Local dev | Your laptop (`localhost:3000`) | AMD GPU Cloud (`129.212.178.101:8080`) | Iterating quickly while using MI300X remotely |
+| HF public shell | HuggingFace Space CPU | AMD GPU Cloud | Public hackathon page, real generation gated by access code |
+| HF self-contained GPU | HuggingFace Space | HuggingFace Space GPU | Only if the Space has suitable ROCm/AMD GPU hardware |
+
+For the current CPU Basic HuggingFace Space, use it as the public UI and keep real generation on AMD GPU Cloud:
+
+```env
+# frontend/.env.local for local development
+NEXT_PUBLIC_API_URL=http://129.212.178.101:8080
+NEXT_PUBLIC_DEMO_ENABLED=true
+NEXT_PUBLIC_DEMO_ONLY=false
+```
+
+On the AMD GPU Cloud backend, protect expensive GPU endpoints before exposing the demo:
+
+```bash
+export DEMO_ACCESS_CODE="share-this-only-with-judges"
+export MAX_CONCURRENT_JOBS=1
+export MAX_UPLOAD_MB=300
+export VLLM_IDLE_TIMEOUT=300
+```
+
+When `DEMO_ACCESS_CODE` is set, `/api/process`, `/api/video-info`, and vLLM start/stop endpoints require the `X-Demo-Key` header. The frontend shows a Demo Access Code field and sends that header automatically. Leave `DEMO_ACCESS_CODE` unset only for private/local testing.
+
+For a self-contained HuggingFace GPU Space, leave `NEXT_PUBLIC_API_URL=""` so nginx routes `/api`, `/ws`, and `/downloads` to FastAPI inside the same Space. Only use this mode if the Space hardware is actually GPU-capable.
+
+For the public HuggingFace Space, set `NEXT_PUBLIC_DEMO_ONLY=true`. Visitors can open the UI and run the simulated demo without touching AMD GPU credits. Judges can enter the access code to run real generation against the protected AMD GPU Cloud backend.
 
 ---
 
@@ -198,7 +242,7 @@ For development without a GPU, the pipeline runs with fallback stubs (stubbed Wh
 | Track 3: Vision & Multimodal AI | ✅ Qwen2.5-VL processes frames + audio simultaneously |
 | AMD Developer Cloud | ✅ All inference on AMD Instinct MI300X via ROCm 6.3 |
 | ROCm acceleration | ✅ vLLM + SDPA Whisper + h264_amf encoder |
-| Qwen partner integration | ✅ Qwen2.5-VL as primary vision model, Qwen3 for text/emoji |
+| Qwen partner integration | ✅ Qwen2.5-VL as primary multimodal model and text/emoji prompt model |
 | HuggingFace Space | ✅ `lablab-ai-amd-developer-hackathon/ElevenClip-AI` |
 | Public GitHub repo | ✅ `JakgritB/ElevenClip-AI` |
 | Ship It challenge | ✅ Social posts tagging @AIatAMD + @lablab |

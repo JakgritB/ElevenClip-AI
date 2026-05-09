@@ -20,7 +20,7 @@ soundfile==0.12.1
 transformers==4.47.1
 accelerate==1.2.1
 
-# AI — Vision: Qwen3-VL via vLLM OpenAI-compatible API
+# AI — Vision: Qwen2.5-VL via vLLM OpenAI-compatible API
 # vLLM installed separately:
 #   pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.2
 openai==1.57.4

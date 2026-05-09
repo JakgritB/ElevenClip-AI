@@ -82,7 +82,7 @@ class _VLLMManager:
     def _start(self, progress_cb=None) -> None:
         logger.info("vLLM: starting on demand…")
         if progress_cb:
-            progress_cb("Starting AI model (Qwen3-VL)… ~2 min first time")
+            progress_cb("Starting AI model (Qwen2.5-VL)… ~2 min first time")
 
         # Try Docker container first (vLLM may only be installed inside a container)
         if DOCKER_CONTAINER:

@@ -106,13 +106,13 @@ const MOCK_CLIPS: (ClipResult & { suggested_caption: string })[] = [
   {
     index: 0, start: 12.5, end: 72.5, duration: 60.0, score: 0.92,
     download_url: `${BBB}#t=12,73`, raw_url: BBB, ass_path: "demo_0.ass",
-    highlight_reason: "High energy moment — face detected, audio peak +8.4 dB, Qwen3-VL excitement score 0.94",
+    highlight_reason: "High energy moment — face detected, audio peak +8.4 dB, Qwen2.5-VL excitement score 0.94",
     suggested_caption: "This is why I keep coming back to this stream 🔥 Wait for the ending… #gaming #highlight #viral #amd",
   },
   {
     index: 1, start: 145.0, end: 205.0, duration: 60.0, score: 0.87,
     download_url: `${BBB}#t=145,205`, raw_url: BBB, ass_path: "demo_1.ass",
-    highlight_reason: "Exciting chase sequence — Qwen3-VL excitement score 0.91, crowd reaction detected at 147.2s",
+    highlight_reason: "Exciting chase sequence — Qwen2.5-VL excitement score 0.91, crowd reaction detected at 147.2s",
     suggested_caption: "POV: You witness the most insane moment of the year 🎮 Nobody was ready for this #fyp #gaming #moments",
   },
   {

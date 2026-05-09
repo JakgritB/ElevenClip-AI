@@ -1,4 +1,4 @@
-"""Qwen3-VL multimodal scene analysis via vLLM OpenAI-compatible API.
+"""Qwen2.5-VL multimodal scene analysis via vLLM OpenAI-compatible API.
 
 Sends video frames + transcript text together (true multimodal fusion).
 Outputs: excitement_score, face_bbox, action_type, humor_level, emotion.
@@ -47,7 +47,7 @@ def analyze_scene(
     channel_description: str = "",
     clip_style: str = "entertaining",
 ) -> dict:
-    """Analyze a single scene using Qwen3-VL (vision + text multimodal fusion).
+    """Analyze a single scene using Qwen2.5-VL (vision + text multimodal fusion).
 
     Sends up to 3 representative frames + transcript context to vLLM.
     Returns analysis dict with excitement_score, face_bbox, etc.
@@ -274,7 +274,7 @@ def _default_hre_analysis(seg_idx: int = 0, n_total: int = 1) -> dict:
 
 
 def get_emoji_for_scene(scene_text: str, emotion: str, action_type: str) -> str:
-    """Use Qwen3 text-only to select a contextually appropriate emoji."""
+    """Use the configured Qwen2.5-VL model as a text prompt to select an emoji."""
     try:
         from openai import OpenAI
         client = OpenAI(base_url=VLLM_BASE_URL, api_key=VLLM_API_KEY)

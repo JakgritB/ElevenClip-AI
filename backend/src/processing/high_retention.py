@@ -1,12 +1,12 @@
 """High-Retention Editing pipeline — per-segment AI decisions.
 
 Each 3-5s segment gets its own zoom direction, subtitle position,
-and caption color driven by Qwen3-VL analyzing one frame per segment.
+and caption color driven by Qwen2.5-VL analyzing one frame per segment.
 
 Pipeline per clip:
   1. Segment clip at speech pauses (3-5s chunks)
   2. Extract midpoint frame from each segment
-  3. Qwen3-VL analyzes each frame → zoom + subtitle decisions
+  3. Qwen2.5-VL analyzes each frame → zoom + subtitle decisions
   4. ffmpeg filter_complex: per-segment zoompan + concat
   5. ASS subtitles with per-segment alignment/color/size override tags
 """
@@ -459,7 +459,7 @@ def apply_hre(
             f"{duration:.1f}s → {n} segments (AI analyzing each)"
         )
 
-        # 2. Qwen3-VL analyzes each segment
+        # 2. Qwen2.5-VL analyzes each segment
         analyses = [
             _analyze_segment(clip_path, seg, i, n, transcript, clip_start, tmp_dir)
             for i, seg in enumerate(segments)
