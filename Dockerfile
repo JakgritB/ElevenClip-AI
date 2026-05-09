@@ -42,7 +42,11 @@ ENV NEXT_PUBLIC_DEMO_ENABLED="true"
 ENV NEXT_PUBLIC_DEMO_ONLY="true"
 ENV REMOTE_BACKEND_URL="http://129.212.178.101:8080"
 
-RUN cd /app/frontend && npm run build
+RUN cd /app/frontend \
+    && npm run build \
+    && mkdir -p .next/standalone/.next \
+    && cp -r .next/static .next/standalone/.next/static \
+    && cp -r public .next/standalone/public
 
 # ─── nginx config ──────────────────────────────────────────────────────────
 COPY nginx.conf /app/nginx.conf
