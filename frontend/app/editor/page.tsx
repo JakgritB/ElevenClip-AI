@@ -394,28 +394,13 @@ function EditorContent() {
 
   const handleDownload = async () => {
     if (!clipDownloadUrl || !clip) return;
-    const fileName = `clip_${clip.index}.mp4`;
-    try {
-      const res = await fetch(clipDownloadUrl);
-      if (!res.ok) throw new Error(await res.text());
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objectUrl);
-    } catch {
-      const a = document.createElement("a");
-      a.href = clipDownloadUrl;
-      a.download = fileName;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
+    const a = document.createElement("a");
+    a.href = clipDownloadUrl;
+    a.download = `clip_${clip.index}.mp4`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   const handleSubEdit = async (clipIndex: number, eventIdx: number, text: string) => {
