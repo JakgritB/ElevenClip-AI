@@ -365,11 +365,42 @@ async def _run_pipeline(
         extract_aspect_mode = "crop" if settings.mode == "hre" else settings.aspect_mode
         clips = await extract_all_clips_async(video_path, selected, session_dir, session_id, aspect_mode=extract_aspect_mode)
 
-        # ── 8. Subtitles / HRE (all clips in parallel) ─────────────────
-        await send_progress(session_id, "subtitles", 86, "Generating subtitles (parallel)...")
+        # ── 8. Subtitles / HRE ─────────────────────────────────────────
+        subtitle_msg = (
+            "Transcribing each selected clip for accurate subtitle timing..."
+            if settings.mode == "normal"
+            else "Generating AI-directed HRE edits..."
+        )
+        await send_progress(session_id, "subtitles", 86, subtitle_msg)
 
         subtitle_tasks = []
         final_clips = []
+        normal_subtitle_sem = asyncio.Semaphore(1)
+
+        async def _render_normal_clip(
+            cp: Path,
+            ap: Path,
+            fp: Path,
+            clip_index: int,
+        ) -> None:
+            async with normal_subtitle_sem:
+                clip_audio = session_dir / f"{session_id}_clip_{clip_index:02d}_audio.wav"
+                await loop.run_in_executor(None, lambda: extract_audio(cp, clip_audio))
+                clip_local_transcript = await transcribe_async(
+                    clip_audio,
+                    clip_language=settings.clip_language,
+                    subtitle_language=settings.subtitle_language,
+                    device=device,
+                )
+                generate_subtitles(
+                    clip_local_transcript,
+                    ap,
+                    settings.style_config,
+                    clip_start_offset=0.0,
+                    clip_end_offset=None,
+                )
+                normalize_subtitle_timing(ap)
+                await loop.run_in_executor(None, lambda: burn_subtitles(cp, ap, fp))
 
         for clip in clips:
             if not clip.get("clip_path"):
@@ -377,29 +408,26 @@ async def _run_pipeline(
             clip_path = Path(clip["clip_path"])
             i = clip["clip_index"]
 
-            clip_transcript = {
-                **transcript,
-                "segments": [
-                    s for s in transcript.get("segments", [])
-                    if s["start"] < clip["end"] and s["end"] > clip["start"]
-                ],
-            }
-
             ass_path = session_dir / f"{session_id}_clip_{i:02d}.ass"
             final_path = session_dir / f"{session_id}_clip_{i:02d}_final.mp4"
 
             if settings.mode == "hre":
+                clip_transcript = {
+                    **transcript,
+                    "segments": [
+                        s for s in transcript.get("segments", [])
+                        if s["start"] < clip["end"] and s["end"] > clip["start"]
+                    ],
+                }
                 subtitle_tasks.append(loop.run_in_executor(
                     None,
                     lambda cp=clip_path, cd=clip, tr=clip_transcript, fp=final_path:
                         apply_hre(cp, cd, tr, fp)
                 ))
             else:
-                def _gen_and_burn(cp=clip_path, ap=ass_path, tr=clip_transcript, cs=clip["start"], ce=clip["end"], fp=final_path):
-                    generate_subtitles(tr, ap, settings.style_config, clip_start_offset=cs, clip_end_offset=ce)
-                    normalize_subtitle_timing(ap)
-                    burn_subtitles(cp, ap, fp)
-                subtitle_tasks.append(loop.run_in_executor(None, _gen_and_burn))
+                subtitle_tasks.append(asyncio.create_task(
+                    _render_normal_clip(clip_path, ass_path, final_path, i)
+                ))
 
             final_clips.append({
                 "index": i,
