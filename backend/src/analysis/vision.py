@@ -195,6 +195,8 @@ Rules:
 - For normal explanatory speech:
   zoom_direction=hold, zoom_speed=slow, subtitle_mode=sentence, subtitle_emphasis=calm, energy_level=medium or low.
 - Use zoom OUT only as breathing room after an intense/key moment.
+- Sentence captions should sit around center-bottom: caption_x about 0.50, caption_y about 0.68-0.74, caption_anchor=2.
+- Word highlight captions can sit center, mid-upper, mid-left, or mid-right with larger text, as long as they avoid the face/product.
 - subtitle WORD: short hooks, reactions, punchlines, important keywords
 - subtitle PHRASE: fast but understandable speech, 2-4 words at a time
 - subtitle SENTENCE: explanation, normal conversation, low/medium energy

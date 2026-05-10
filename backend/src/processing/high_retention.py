@@ -192,14 +192,14 @@ def _build_zoom_exprs(
 
     if direction == "in":
         if speed == "fast":
-            z_expr, max_zoom = "min(1.12+on*0.0018\\,1.55)", 1.55
+            z_expr, max_zoom = "min(1.0+on*0.0100\\,1.45)", 1.45
         else:
-            z_expr, max_zoom = "min(1.04+on*0.0009\\,1.32)", 1.32
+            z_expr, max_zoom = "min(1.0+on*0.0035\\,1.28)", 1.28
     elif direction == "out":
         if speed == "fast":
-            z_expr, max_zoom = "max(1.48-on*0.0018\\,1.0)", 1.48
+            z_expr, max_zoom = "max(1.45-on*0.0100\\,1.0)", 1.45
         else:
-            z_expr, max_zoom = "max(1.28-on*0.0009\\,1.0)", 1.28
+            z_expr, max_zoom = "max(1.28-on*0.0040\\,1.0)", 1.28
     else:  # hold
         z_expr, max_zoom = "1.08", 1.08
 
@@ -357,6 +357,20 @@ def _safe_caption_point(subject_x: float, subject_y: float, seg_idx: int) -> tup
     return x, y, _caption_anchor_for(x, y)
 
 
+def _word_caption_point(subject_x: float, subject_y: float, seg_idx: int) -> tuple[float, float, int]:
+    """Put highlight words in punchy mid-frame zones instead of ordinary subtitle zones."""
+    candidates = [
+        (0.50, 0.42),
+        (0.50, 0.26),
+        (0.28 if subject_x > 0.55 else 0.72, 0.46),
+        (0.30 if subject_x > 0.50 else 0.70, 0.58),
+    ]
+    x, y = candidates[seg_idx % len(candidates)]
+    if abs(x - subject_x) < 0.18 and abs(y - subject_y) < 0.18:
+        x = 0.25 if subject_x > 0.5 else 0.75
+    return x, y, _caption_anchor_for(x, y)
+
+
 def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
     """Validate model output and fill HRE fields used by the renderer."""
     an = dict(analysis or {})
@@ -402,11 +416,27 @@ def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
         0.82,
     )
 
+    if mode == "sentence":
+        caption_x = 0.50
+        caption_y = _clamp_float(an.get("caption_y"), 0.70, 0.64, 0.74)
+        caption_anchor = 2
+        caption_max_width_pct = max(caption_max_width_pct, 0.68)
+    elif mode == "word":
+        word_x, word_y, word_anchor = _word_caption_point(subject_x, subject_y, seg_idx)
+        if caption_y > 0.66 or (abs(caption_x - subject_x) < 0.14 and abs(caption_y - subject_y) < 0.14):
+            caption_x, caption_y, caption_anchor = word_x, word_y, word_anchor
+        caption_max_width_pct = min(caption_max_width_pct, 0.56)
+
     if subject_bbox:
         x1, y1, x2, y2 = subject_bbox
         overlaps_subject = (x1 - 0.08) <= caption_x <= (x2 + 0.08) and (y1 - 0.08) <= caption_y <= (y2 + 0.08)
         if overlaps_subject:
-            caption_x, caption_y, caption_anchor = fallback_x, fallback_y, fallback_anchor
+            if mode == "sentence":
+                caption_x, caption_y, caption_anchor = 0.50, 0.70, 2
+            elif mode == "word":
+                caption_x, caption_y, caption_anchor = _word_caption_point(subject_x, subject_y, seg_idx + 1)
+            else:
+                caption_x, caption_y, caption_anchor = fallback_x, fallback_y, fallback_anchor
 
     if seg_idx == 0:
         zoom_direction, zoom_speed = "in", "fast"
@@ -724,11 +754,11 @@ def _subtitle_tag(plan: dict) -> tuple[str, int]:
     max_width_px = max(360, min(886, int(_clamp_float(plan.get("caption_max_width_pct"), 0.62, 0.35, 0.82) * 1080)))
 
     if mode == "sentence":
-        font_size = 56 if energy != "high" else 62
+        font_size = 54 if energy != "high" else 60
     elif mode == "phrase":
         font_size = 68 if energy != "low" else 62
     else:
-        font_size = 80 if energy == "high" else 72
+        font_size = 96 if energy == "high" else 84
 
     if alignment in {4, 5, 6}:
         font_size = max(54, font_size - 4)

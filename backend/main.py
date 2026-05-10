@@ -354,7 +354,9 @@ async def _run_pipeline(
 
         # ── 7. Extract clips (AMD AMF hardware encoder) ─────────────────
         await send_progress(session_id, "cutting", 81, f"Cutting {len(selected)} clips (h264_amf)...")
-        extract_aspect_mode = "safe_fit" if settings.mode == "hre" and settings.aspect_mode == "crop" else settings.aspect_mode
+        # HRE needs a true TikTok crop, not a shrunken fit/letterbox frame.
+        # The crop extractor centers on Qwen's face/person bbox when available.
+        extract_aspect_mode = "crop" if settings.mode == "hre" else settings.aspect_mode
         clips = await extract_all_clips_async(video_path, selected, session_dir, session_id, aspect_mode=extract_aspect_mode)
 
         # ── 8. Subtitles / HRE (all clips in parallel) ─────────────────
