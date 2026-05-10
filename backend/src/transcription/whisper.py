@@ -94,6 +94,27 @@ def transcribe(
         else:
             dtype = torch.float32
 
+        def _call_asr(pipe_obj, bs, gk, timestamps="word"):
+            return pipe_obj(
+                str(audio_path),
+                batch_size=max(1, bs),
+                return_timestamps=timestamps,
+                generate_kwargs=gk,
+            )
+
+        def _ensure_timestamp_chunks(pipe_obj, bs, gk, result):
+            if result.get("chunks"):
+                return result
+            if not result.get("text"):
+                return result
+            logger.warning("Whisper returned no word timestamps; retrying with chunk timestamps")
+            try:
+                retry = _call_asr(pipe_obj, max(1, bs // 2), gk, timestamps=True)
+                return retry if retry.get("chunks") else result
+            except Exception as e:
+                logger.warning(f"Whisper chunk timestamp retry failed: {str(e)[:120]}")
+                return result
+
         def _run_on_cpu(gk):
             logger.warning("Whisper: running on CPU (GPU unavailable or OOM)")
             pipe_cpu = pipeline(
@@ -102,8 +123,8 @@ def transcribe(
                 torch_dtype=torch.float32,
                 device="cpu",
             )
-            return pipe_cpu(str(audio_path), batch_size=1,
-                            return_timestamps="word", generate_kwargs=gk)
+            result_cpu = _call_asr(pipe_cpu, 1, gk, timestamps="word")
+            return _ensure_timestamp_chunks(pipe_cpu, 1, gk, result_cpu)
 
         generate_kwargs = {"task": task}
         if clip_lang_code:
@@ -132,8 +153,8 @@ def transcribe(
                     device=device,
                     model_kwargs={"attn_implementation": "sdpa"},
                 )
-                result = pipe(str(audio_path), batch_size=batch_size,
-                              return_timestamps="word", generate_kwargs=generate_kwargs)
+                result = _call_asr(pipe, batch_size, generate_kwargs, timestamps="word")
+                result = _ensure_timestamp_chunks(pipe, batch_size, generate_kwargs, result)
         except (RuntimeError, Exception) as e:
             err = str(e)
             if any(k in err for k in ("HIPBLAS", "HIP", "out of memory", "OutOfMemory", "CUDA")):
@@ -165,6 +186,33 @@ def transcribe(
         return _stub_transcription(str(audio_path))
 
 
+def _expand_chunk_words(text: str, start: float, end: float, target_lang: str) -> list[dict]:
+    """Create word-ish timings when Whisper only gives chunk timestamps."""
+    duration = max(0.08, end - start)
+    if target_lang in CHAR_LEVEL_LANGUAGES:
+        units = [ch for ch in text if ch.strip()]
+    else:
+        units = text.split()
+
+    if len(units) <= 1:
+        return [{"word": text, "start": start, "end": end}]
+
+    weights = [max(1, len(unit.strip())) for unit in units]
+    total = sum(weights)
+    cursor = start
+    words = []
+    for i, (unit, weight) in enumerate(zip(units, weights)):
+        if i == len(units) - 1:
+            unit_end = end
+        else:
+            unit_end = min(end, cursor + duration * (weight / total))
+        if unit_end <= cursor:
+            unit_end = min(end, cursor + 0.08)
+        words.append({"word": unit, "start": cursor, "end": unit_end, "synthetic": True})
+        cursor = unit_end
+    return words
+
+
 def _build_segments(whisper_result: dict, target_lang: str) -> list:
     """Convert Whisper output to segment list with word timestamps."""
     segments = []
@@ -194,7 +242,7 @@ def _build_segments(whisper_result: dict, target_lang: str) -> list:
         else:
             current_seg["text"] += (" " if current_seg["text"] else "") + text
 
-        current_seg["words"].append({"word": text, "start": start, "end": end})
+        current_seg["words"].extend(_expand_chunk_words(text, start, end, target_lang))
         current_seg["end"] = end
 
     if current_seg["start"] is not None:

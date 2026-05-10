@@ -330,9 +330,13 @@ def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, sty
     for w in words:
         if char_level:
             for ch in w["word"]:
-                unit_list.append({"word": ch, "start": w["start"], "end": w["end"]})
+                unit_list.append({"word": ch, "start": w["start"], "end": w["end"], "synthetic": w.get("synthetic", False)})
         else:
             unit_list.append(w)
+
+    if any(unit.get("synthetic") for unit in unit_list):
+        _add_grouped_word_events(subs, unit_list, seg_end, animation, style_config, clip_offset)
+        return
 
     for i, unit in enumerate(unit_list):
         start = unit["start"] - clip_offset
@@ -359,6 +363,50 @@ def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, sty
             text=tags + unit["word"].strip(),
         )
         subs.append(event)
+
+
+def _add_grouped_word_events(subs, units, seg_end, animation, style_config, clip_offset=0.0):
+    """Use short phrase events for estimated timestamps so captions stay readable."""
+    i = 0
+    while i < len(units):
+        unit = units[i]
+        start = unit["start"] - clip_offset
+        if start >= seg_end:
+            break
+        if (unit["end"] - clip_offset) <= 0:
+            i += 1
+            continue
+
+        start = max(0.0, start)
+        group = []
+        end = start
+
+        while i < len(units):
+            unit = units[i]
+            unit_start = unit["start"] - clip_offset
+            unit_end = (unit["end"] - clip_offset) if unit["end"] > unit["start"] else unit_start + 0.25
+            if unit_end <= 0:
+                i += 1
+                continue
+            if unit_start >= seg_end:
+                break
+
+            word = unit["word"].strip()
+            candidate = " ".join([*group, word])
+            candidate_end = min(seg_end, max(unit_end, start + 0.45))
+
+            if group and (len(group) >= 3 or len(candidate) > 30 or candidate_end - start > 1.35):
+                break
+
+            group.append(word)
+            end = candidate_end
+            i += 1
+
+        if not group:
+            i += 1
+            continue
+
+        _add_sentence_event(subs, " ".join(group), start, end, animation, style_config)
 
 
 def _strip_ass_tags(text: str) -> str:
