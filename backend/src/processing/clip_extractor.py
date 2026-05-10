@@ -5,6 +5,9 @@ from pathlib import Path
 from loguru import logger
 
 
+ANALYSIS_FRAME_WIDTH = 640.0
+
+
 def _normalise_bbox(face_bbox: list | None) -> list[float] | None:
     if not face_bbox or len(face_bbox) != 4:
         return None
@@ -21,6 +24,19 @@ def _normalise_bbox(face_bbox: list | None) -> list[float] | None:
     if x2 - x1 < 0.02 or y2 - y1 < 0.02:
         return None
     return [x1, y1, x2, y2]
+
+
+def _outer_subject_x(x1: float, x2: float) -> float:
+    """Aim toward the face side when a person box covers torso/background too."""
+    center = (x1 + x2) / 2.0
+    width = x2 - x1
+    if width < 0.18:
+        return center
+    if center > 0.54 or x2 > 0.64:
+        return x1 * 0.32 + x2 * 0.68
+    if center < 0.46 or x1 < 0.36:
+        return x1 * 0.68 + x2 * 0.32
+    return center
 
 
 def _detect_face_bbox(video_path: Path, start: float, end: float) -> list[float] | None:
@@ -122,7 +138,7 @@ def _detect_face_bbox(video_path: Path, start: float, end: float) -> list[float]
     return best_bbox
 
 
-def _face_center_expr(face_bbox: list | None) -> str | None:
+def _face_center_expr(face_bbox: list | None, bias_outer: bool = False) -> str | None:
     """Return a crop expression x-center from Qwen's normalized face bbox."""
     if not face_bbox or len(face_bbox) != 4:
         return None
@@ -131,14 +147,17 @@ def _face_center_expr(face_bbox: list | None) -> str | None:
     except Exception:
         return None
 
-    # Qwen prompt asks for normalized percentages. Older comments said pixels,
-    # so keep a conservative pixel fallback, but prefer normalized handling.
-    face_cx = (x1 + x2) / 2.0
+    # Qwen is prompted for normalized values, but often returns pixel boxes from
+    # the 640px analysis frames. Treat those as 640-wide before falling back.
     if max(abs(x1), abs(x2)) <= 1.5:
-        face_cx = min(1.0, max(0.0, face_cx))
+        x1, x2 = sorted((min(1.0, max(0.0, x1)), min(1.0, max(0.0, x2))))
+        face_cx = _outer_subject_x(x1, x2) if bias_outer else (x1 + x2) / 2.0
         return f"{face_cx:.4f}*iw-540"
-    if 0 <= face_cx <= 1080:
-        return f"({face_cx:.1f}/1080)*iw-540"
+    if 0 <= x1 <= ANALYSIS_FRAME_WIDTH * 1.25 and 0 <= x2 <= ANALYSIS_FRAME_WIDTH * 1.25:
+        x1, x2 = sorted((x1 / ANALYSIS_FRAME_WIDTH, x2 / ANALYSIS_FRAME_WIDTH))
+        x1, x2 = min(1.0, max(0.0, x1)), min(1.0, max(0.0, x2))
+        face_cx = _outer_subject_x(x1, x2)
+        return f"{face_cx:.4f}*iw-540"
     return None
 
 
@@ -191,8 +210,14 @@ def extract_clip(
             # Crop: scale to 1920 height first, then center-crop to 1080 wide
             # Center on a detected real face first, then Qwen's face bbox.
             detected_face_bbox = _detect_face_bbox(video_path, start, end)
-            crop_bbox = detected_face_bbox or _normalise_bbox(face_bbox) or face_bbox
-            face_expr = _face_center_expr(crop_bbox)
+            if detected_face_bbox:
+                face_expr = _face_center_expr(detected_face_bbox)
+            else:
+                normalized_bbox = _normalise_bbox(face_bbox)
+                face_expr = (
+                    _face_center_expr(normalized_bbox)
+                    or _face_center_expr(face_bbox, bias_outer=True)
+                )
             if face_expr:
                 crop = f"scale=-1:1920,crop=1080:1920:max(0\\,min(iw-1080\\,{face_expr})):0"
             else:
