@@ -33,6 +33,11 @@ Respond ONLY with valid JSON matching this exact schema — no markdown, no expl
 
 Channel context: {channel_description}
 Requested clip style: {clip_style}
+
+Rules:
+- If a visible human is present, prioritize the speaker/person over products, screens, logos, or background objects.
+- Set has_face=true only for a real visible human face, and make face_bbox cover the visible face/head area.
+- If there is no visible human face, set has_face=false and face_bbox=null.
 """
 
 

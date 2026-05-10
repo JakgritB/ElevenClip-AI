@@ -143,6 +143,121 @@ def _extract_segment_frames(video_path: Path, seg: dict, seg_idx: int, tmp_dir: 
     return frames
 
 
+def _detect_face_bbox_in_image(image_path: Path) -> list[float] | None:
+    """Detect a human face in one frame and return a normalized padded bbox."""
+    try:
+        import cv2
+    except Exception:
+        return None
+
+    image = cv2.imread(str(image_path))
+    if image is None:
+        return None
+
+    fh, fw = image.shape[:2]
+    if fw <= 0 or fh <= 0:
+        return None
+
+    cascade_paths = [
+        Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml",
+        Path(cv2.data.haarcascades) / "haarcascade_profileface.xml",
+    ]
+    cascades = [cv2.CascadeClassifier(str(p)) for p in cascade_paths if p.exists()]
+    cascades = [c for c in cascades if not c.empty()]
+    if not cascades:
+        return None
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    candidates: list[tuple[int, int, int, int]] = []
+    min_size = (max(34, fw // 46), max(34, fh // 46))
+
+    for cascade in cascades:
+        faces = cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.08,
+            minNeighbors=4,
+            minSize=min_size,
+        )
+        candidates.extend(tuple(map(int, face)) for face in faces)
+
+        flipped = cv2.flip(gray, 1)
+        flipped_faces = cascade.detectMultiScale(
+            flipped,
+            scaleFactor=1.08,
+            minNeighbors=4,
+            minSize=min_size,
+        )
+        for x, y, w, h in flipped_faces:
+            candidates.append((fw - int(x) - int(w), int(y), int(w), int(h)))
+
+    best: tuple[int, int, int, int] | None = None
+    best_score = 0.0
+    for x, y, w, h in candidates:
+        area = w * h
+        if area <= 0:
+            continue
+        face_cy = (y + h / 2) / fh
+        centrality = 1.0 - min(0.55, abs(face_cy - 0.38))
+        score = area * centrality
+        if score > best_score:
+            best = (x, y, w, h)
+            best_score = score
+
+    if not best:
+        return None
+
+    x, y, w, h = best
+    pad_x = w * 0.34
+    pad_y_top = h * 0.46
+    pad_y_bottom = h * 0.70
+    return [
+        max(0.0, (x - pad_x) / fw),
+        max(0.0, (y - pad_y_top) / fh),
+        min(1.0, (x + w + pad_x) / fw),
+        min(1.0, (y + h + pad_y_bottom) / fh),
+    ]
+
+
+def _detect_segment_face_bbox(frame_paths: list[Path]) -> list[float] | None:
+    """Pick the strongest face box across the sampled frames for a segment."""
+    best_bbox: list[float] | None = None
+    best_area = 0.0
+    for frame_path in frame_paths:
+        bbox = _detect_face_bbox_in_image(frame_path)
+        if not bbox:
+            continue
+        area = max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+        if area > best_area:
+            best_bbox = bbox
+            best_area = area
+
+    if best_bbox:
+        logger.info(
+            "HRE face zoom target: "
+            f"x={((best_bbox[0] + best_bbox[2]) / 2):.2f} "
+            f"y={((best_bbox[1] + best_bbox[3]) / 2):.2f}"
+        )
+    return best_bbox
+
+
+def _apply_detected_face_override(analysis: dict, face_bbox: list[float] | None) -> dict:
+    if not face_bbox:
+        return analysis
+    x1, y1, x2, y2 = face_bbox
+    face_cx = (x1 + x2) / 2.0
+    face_cy = (y1 + y2) / 2.0
+    return {
+        **analysis,
+        "face_detected": True,
+        "subject_bbox": face_bbox,
+        "face_cx": face_cx,
+        "face_cy": face_cy,
+        "zoom_anchor_x": face_cx,
+        "zoom_anchor_y": face_cy,
+    }
+
+
 # ─── Per-segment AI analysis ──────────────────────────────────────────────────
 
 def _analyze_segment(
@@ -172,7 +287,8 @@ def _analyze_segment(
         if w.get("start", 0) < abs_end and w.get("end", 0) > abs_start
     ).strip()
 
-    return analyze_frames_for_hre(frame_paths, context, seg_idx, n_total)
+    analysis = analyze_frames_for_hre(frame_paths, context, seg_idx, n_total)
+    return _apply_detected_face_override(analysis, _detect_segment_face_bbox(frame_paths))
 
 
 # ─── Zoom expression builders ─────────────────────────────────────────────────
