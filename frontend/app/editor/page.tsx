@@ -9,14 +9,21 @@ import {
   Heart, MessageCircle, Share2, Music,
 } from "lucide-react";
 
-const DEMO_CLIP_URLS = [
+const HRE_DEMO_CLIP_URLS = [
   "/demo/elevenclip_demo_01.mp4",
   "/demo/elevenclip_demo_02.mp4",
   "/demo/elevenclip_demo_03.mp4",
 ];
 
+const NORMAL_DEMO_CLIP_URLS = [
+  "/demo/elevenclip_normal_01.mp4",
+  "/demo/elevenclip_normal_02.mp4",
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SubEvent = SubtitleEvent;
+type DemoResultMode = "normal" | "hre";
+type DemoClip = ClipResult & { suggested_caption: string; demo_mode: DemoResultMode };
 type SubLineStyle = {
   font_family?: string; font_size?: number;
   primary_color?: string; secondary_color?: string;
@@ -53,6 +60,7 @@ const L = {
     noSubEvents: "No subtitle lines were generated for this clip. Try re-running with sentence subtitles or render again after the backend update.",
     cut: "Cut",
     demoSession: "Demo session", waitRender: "Waiting for render", close: "Close",
+    normalDemo: "Normal subtitle demo", hreDemo: "HRE demo",
     preview: "PREVIEW",
     demoNotice: "Simulation only — these are pre-rendered demo results, not a live GPU run.",
   },
@@ -79,6 +87,7 @@ const L = {
     noSubEvents: "คลิปนี้ยังไม่มีบรรทัดซับ ลองรันใหม่ด้วยซับแบบประโยค หรือเรนเดอร์อีกครั้งหลังอัปเดต backend",
     cut: "จุดตัด",
     demoSession: "Demo session", waitRender: "รอการเรนเดอร์", close: "ปิด",
+    normalDemo: "เดโมโหมดซับปกติ", hreDemo: "เดโม HRE",
     preview: "PREVIEW",
     demoNotice: "โหมดจำลองเท่านั้น — คลิปเหล่านี้เป็นผลลัพธ์ที่เตรียมไว้ ไม่ได้รัน GPU สด",
   },
@@ -105,6 +114,7 @@ const L = {
     noSubEvents: "此片段未生成字幕行。请用句子字幕重新运行，或在后端更新后重新渲染。",
     cut: "切割",
     demoSession: "演示会话", waitRender: "等待渲染", close: "关闭",
+    normalDemo: "普通字幕演示", hreDemo: "HRE 演示",
     preview: "预览",
     demoNotice: "仅为模拟演示 — 这些是预渲染结果，并非实时 GPU 运行。",
   },
@@ -112,27 +122,6 @@ const L = {
 type Lbl = typeof L[Lang];
 
 // ─── Mock data ─────────────────────────────────────────────────────────────────
-const MOCK_CLIPS: (ClipResult & { suggested_caption: string })[] = [
-  {
-    index: 0, start: 13.0, end: 43.0, duration: 30.0, score: 0.462,
-    download_url: DEMO_CLIP_URLS[0], raw_url: DEMO_CLIP_URLS[0], ass_path: "demo_0.ass",
-    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it a compelling highlight for tech enthusiasts.",
-    suggested_caption: "AMD Instinct MI350P explained in 30 seconds: AI infrastructure, performance, and enterprise-ready acceleration.",
-  },
-  {
-    index: 1, start: 125.0, end: 155.0, duration: 30.0, score: 0.45,
-    download_url: DEMO_CLIP_URLS[1], raw_url: DEMO_CLIP_URLS[1], ass_path: "demo_1.ass",
-    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in technology and AI.",
-    suggested_caption: "A quick look at how AMD Instinct GPUs power modern AI and high-performance computing workloads.",
-  },
-  {
-    index: 2, start: 149.0, end: 179.0, duration: 30.0, score: 0.398,
-    download_url: DEMO_CLIP_URLS[2], raw_url: DEMO_CLIP_URLS[2], ass_path: "demo_2.ass",
-    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in enterprise computing and AI.",
-    suggested_caption: "Enterprise AI needs serious compute. This clip highlights where AMD Instinct fits in the stack.",
-  },
-];
-
 const MOCK_SUBS: Record<number, SubEvent[]> = {
   0: [
     { index: 0, text: "AMD Instinct MI350P", start: 0.0, end: 2.8 },
@@ -154,6 +143,75 @@ const MOCK_SUBS: Record<number, SubEvent[]> = {
     { index: 3, text: "This preview uses pre-rendered demo output", start: 20.0, end: 23.0 },
   ],
 };
+
+const HRE_MOCK_CLIPS: DemoClip[] = [
+  {
+    index: 0, start: 13.0, end: 43.0, duration: 30.0, score: 0.462,
+    download_url: HRE_DEMO_CLIP_URLS[0], raw_url: HRE_DEMO_CLIP_URLS[0], ass_path: "demo_0.ass",
+    subtitle_events: MOCK_SUBS[0], demo_mode: "hre",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it a compelling highlight for tech enthusiasts.",
+    suggested_caption: "AMD Instinct MI350P explained in 30 seconds: AI infrastructure, performance, and enterprise-ready acceleration.",
+  },
+  {
+    index: 1, start: 125.0, end: 155.0, duration: 30.0, score: 0.45,
+    download_url: HRE_DEMO_CLIP_URLS[1], raw_url: HRE_DEMO_CLIP_URLS[1], ass_path: "demo_1.ass",
+    subtitle_events: MOCK_SUBS[1], demo_mode: "hre",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in technology and AI.",
+    suggested_caption: "A quick look at how AMD Instinct GPUs power modern AI and high-performance computing workloads.",
+  },
+  {
+    index: 2, start: 149.0, end: 179.0, duration: 30.0, score: 0.398,
+    download_url: HRE_DEMO_CLIP_URLS[2], raw_url: HRE_DEMO_CLIP_URLS[2], ass_path: "demo_2.ass",
+    subtitle_events: MOCK_SUBS[2], demo_mode: "hre",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in enterprise computing and AI.",
+    suggested_caption: "Enterprise AI needs serious compute. This clip highlights where AMD Instinct fits in the stack.",
+  },
+];
+
+const NORMAL_MOCK_CLIPS: DemoClip[] = [
+  {
+    index: 2, start: 117.5, end: 162.5, duration: 45.0, score: 0.471,
+    download_url: NORMAL_DEMO_CLIP_URLS[0], raw_url: NORMAL_DEMO_CLIP_URLS[0], ass_path: "normal_demo_0.ass",
+    demo_mode: "normal",
+    highlight_reason: "Normal mode selected this technical partner segment as a strong enterprise AI highlight.",
+    suggested_caption: "A normal subtitle edit showing Red Hat and AMD Instinct MI350P enterprise AI momentum.",
+    subtitle_events: [
+      { index: 0, text: "processors and instinct GPUs natively into the", start: 0.0, end: 2.33 },
+      { index: 1, text: "Red Hat AI enterprise platform.", start: 2.39, end: 4.73 },
+      { index: 2, text: "And we're proud to join AMD for the", start: 4.79, end: 7.12 },
+      { index: 3, text: "launch of the MI350P, which is designed", start: 7.18, end: 9.51 },
+      { index: 4, text: "specifically for flexible air-cooled data", start: 9.57, end: 11.91 },
+      { index: 5, text: "centers.", start: 11.97, end: 14.3 },
+      { index: 6, text: "And together, we're bringing high performance", start: 14.36, end: 16.69 },
+      { index: 7, text: "enterprise AI solutions to life.", start: 16.75, end: 19.09 },
+      { index: 8, text: "Thank you, Brian.", start: 19.15, end: 21.48 },
+      { index: 9, text: "We are thrilled to deepen our strong partnership", start: 21.54, end: 23.87 },
+      { index: 10, text: "with Red Hat to bring the AMD Instinct", start: 23.93, end: 26.27 },
+      { index: 11, text: "MI350P PCI cards to the market.", start: 26.33, end: 28.66 },
+    ],
+  },
+  {
+    index: 3, start: 133.5, end: 178.5, duration: 45.0, score: 0.453,
+    download_url: NORMAL_DEMO_CLIP_URLS[1], raw_url: NORMAL_DEMO_CLIP_URLS[1], ass_path: "normal_demo_1.ass",
+    demo_mode: "normal",
+    highlight_reason: "Normal mode selected a clear spoken explanation with editable subtitles and stable speaker framing.",
+    suggested_caption: "A second normal subtitle result showing partner deployment and enterprise AI use cases.",
+    subtitle_events: [
+      { index: 0, text: "enterprise AI solutions to life.", start: 0.0, end: 2.87 },
+      { index: 1, text: "Thank you, Brian.", start: 2.93, end: 5.81 },
+      { index: 2, text: "We are thrilled to deepen our strong partnership", start: 5.87, end: 8.74 },
+      { index: 3, text: "with Red Hat to bring the AMD Instinct", start: 8.8, end: 11.68 },
+      { index: 4, text: "MI350P PCI cards to the market.", start: 11.74, end: 14.61 },
+      { index: 5, text: "Another esteemed partner, Unifor, will be", start: 14.67, end: 17.54 },
+      { index: 6, text: "deploying our new AMD Instinct MI350P PCI cards", start: 17.6, end: 20.48 },
+      { index: 7, text: "for their work, delivering conversational and", start: 20.54, end: 23.41 },
+      { index: 8, text: "generative AI for enterprises.", start: 23.47, end: 26.35 },
+      { index: 9, text: "Here's their CEO and co-founder, Umesh Sachdev,", start: 26.41, end: 29.28 },
+    ],
+  },
+];
+
+const getDemoClips = (mode: DemoResultMode) => mode === "normal" ? NORMAL_MOCK_CLIPS : HRE_MOCK_CLIPS;
 
 const LANG_OPTIONS = [
   { code: "en" as Lang, label: "English" },
@@ -293,6 +351,7 @@ function EditorContent() {
   const isDemo    = sessionId === "demo";
 
   const [uiLang, setUiLang] = useState<Lang>("en");
+  const [demoResultMode, setDemoResultMode] = useState<DemoResultMode>("hre");
   const lbl = L[uiLang];
 
   useEffect(() => {
@@ -342,21 +401,20 @@ function EditorContent() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (isDemo) {
-      setSubEvents(MOCK_SUBS[activeClip] ?? []);
-    } else {
-      setSubEvents(clips[activeClip]?.subtitle_events ?? []);
-    }
+    setSubEvents(clips[activeClip]?.subtitle_events ?? []);
     setExpandedSubLine(null);
-  }, [activeClip, clips, isDemo]);
+  }, [activeClip, clips]);
 
   const loadClips = async () => {
     if (isDemo) {
-      setClips(MOCK_CLIPS);
+      const savedMode = localStorage.getItem("elevnclip_demo_mode") === "normal" ? "normal" : "hre";
+      setDemoResultMode(savedMode);
+      const demoClips = getDemoClips(savedMode);
+      setClips(demoClips);
       const urls: Record<number, string> = {};
-      MOCK_CLIPS.forEach((c) => { urls[c.index] = c.download_url; });
+      demoClips.forEach((c) => { urls[c.index] = c.download_url; });
       setDownloadUrls(urls);
-      setSubEvents(MOCK_SUBS[0] ?? []);
+      setSubEvents(demoClips[0]?.subtitle_events ?? []);
       setLoading(false);
       return;
     }
@@ -520,7 +578,7 @@ function EditorContent() {
             ))}
           </div>
           <span className="text-xs text-white/30">
-            {clips.length} {lbl.clips.toLowerCase()} · {isDemo ? lbl.demoSession : `Session: ${sessionId.slice(0, 8)}…`}
+            {clips.length} {lbl.clips.toLowerCase()} · {isDemo ? (demoResultMode === "normal" ? lbl.normalDemo : lbl.hreDemo) : `Session: ${sessionId.slice(0, 8)}…`}
           </span>
         </div>
       </nav>

@@ -90,7 +90,7 @@ const DEMO_STAGES = [
   { stage: "transcribe",pct: 50, message: "Simulating Whisper transcript timing..." },
   { stage: "vision",    pct: 65, message: "Simulating Qwen2.5-VL multimodal analysis..." },
   { stage: "scoring",   pct: 80, message: "Simulating highlight scoring and HRE edit planning..." },
-  { stage: "cutting",   pct: 90, message: "Loading 3 pre-rendered ElevenClip AI demo clips..." },
+  { stage: "cutting",   pct: 90, message: "Loading pre-rendered ElevenClip AI demo clips..." },
   { stage: "subtitles", pct: 96, message: "Preparing interactive editor preview..." },
   { stage: "done",      pct: 100, message: "" },
 ];
@@ -188,6 +188,7 @@ export default function HomePage() {
     if (!canProceedStep1) return;
     setStep("generating");
     if (demoMode) {
+      localStorage.setItem("elevnclip_demo_mode", clipSettings.mode);
       runMockDemo();
       return;
     }
