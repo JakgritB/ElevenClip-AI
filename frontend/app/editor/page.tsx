@@ -9,7 +9,11 @@ import {
   Heart, MessageCircle, Share2, Music,
 } from "lucide-react";
 
-const BBB = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+const DEMO_CLIP_URLS = [
+  "/demo/elevenclip_demo_01.mp4",
+  "/demo/elevenclip_demo_02.mp4",
+  "/demo/elevenclip_demo_03.mp4",
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SubEvent = { index: number; text: string; start: number; end: number };
@@ -49,6 +53,7 @@ const L = {
     cut: "Cut",
     demoSession: "Demo session", waitRender: "Waiting for render", close: "Close",
     preview: "PREVIEW",
+    demoNotice: "Simulation only — these are pre-rendered demo results, not a live GPU run.",
   },
   th: {
     back: "กลับ", clips: "คลิป", clip: "คลิป",
@@ -73,6 +78,7 @@ const L = {
     cut: "จุดตัด",
     demoSession: "Demo session", waitRender: "รอการเรนเดอร์", close: "ปิด",
     preview: "PREVIEW",
+    demoNotice: "โหมดจำลองเท่านั้น — คลิปเหล่านี้เป็นผลลัพธ์ที่เตรียมไว้ ไม่ได้รัน GPU สด",
   },
   zh: {
     back: "返回", clips: "片段", clip: "片段",
@@ -97,6 +103,7 @@ const L = {
     cut: "切割",
     demoSession: "演示会话", waitRender: "等待渲染", close: "关闭",
     preview: "预览",
+    demoNotice: "仅为模拟演示 — 这些是预渲染结果，并非实时 GPU 运行。",
   },
 } as const;
 type Lbl = typeof L[Lang];
@@ -104,48 +111,44 @@ type Lbl = typeof L[Lang];
 // ─── Mock data ─────────────────────────────────────────────────────────────────
 const MOCK_CLIPS: (ClipResult & { suggested_caption: string })[] = [
   {
-    index: 0, start: 12.5, end: 72.5, duration: 60.0, score: 0.92,
-    download_url: `${BBB}#t=12,73`, raw_url: BBB, ass_path: "demo_0.ass",
-    highlight_reason: "High energy moment — face detected, audio peak +8.4 dB, Qwen2.5-VL excitement score 0.94",
-    suggested_caption: "This is why I keep coming back to this stream 🔥 Wait for the ending… #gaming #highlight #viral #amd",
+    index: 0, start: 13.0, end: 43.0, duration: 30.0, score: 0.462,
+    download_url: DEMO_CLIP_URLS[0], raw_url: DEMO_CLIP_URLS[0], ass_path: "demo_0.ass",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it a compelling highlight for tech enthusiasts.",
+    suggested_caption: "AMD Instinct MI350P explained in 30 seconds: AI infrastructure, performance, and enterprise-ready acceleration.",
   },
   {
-    index: 1, start: 145.0, end: 205.0, duration: 60.0, score: 0.87,
-    download_url: `${BBB}#t=145,205`, raw_url: BBB, ass_path: "demo_1.ass",
-    highlight_reason: "Exciting chase sequence — Qwen2.5-VL excitement score 0.91, crowd reaction detected at 147.2s",
-    suggested_caption: "POV: You witness the most insane moment of the year 🎮 Nobody was ready for this #fyp #gaming #moments",
+    index: 1, start: 125.0, end: 155.0, duration: 30.0, score: 0.45,
+    download_url: DEMO_CLIP_URLS[1], raw_url: DEMO_CLIP_URLS[1], ass_path: "demo_1.ass",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in technology and AI.",
+    suggested_caption: "A quick look at how AMD Instinct GPUs power modern AI and high-performance computing workloads.",
   },
   {
-    index: 2, start: 320.0, end: 380.0, duration: 60.0, score: 0.81,
-    download_url: `${BBB}#t=320,380`, raw_url: BBB, ass_path: "demo_2.ass",
-    highlight_reason: "Funny reaction moment — humor level 0.88, peak audio energy at 320.4s, chat sentiment positive",
-    suggested_caption: "When the stream becomes a movie 😂 Chat was NOT ready #funny #reaction #viral #clip",
+    index: 2, start: 149.0, end: 179.0, duration: 30.0, score: 0.398,
+    download_url: DEMO_CLIP_URLS[2], raw_url: DEMO_CLIP_URLS[2], ass_path: "demo_2.ass",
+    highlight_reason: "The speaker is enthusiastically discussing the benefits of the AMD Instinct MI350P, making it engaging for viewers interested in enterprise computing and AI.",
+    suggested_caption: "Enterprise AI needs serious compute. This clip highlights where AMD Instinct fits in the stack.",
   },
 ];
 
 const MOCK_SUBS: Record<number, SubEvent[]> = {
   0: [
-    { index: 0, text: "Let's GO! First blood!", start: 0.0, end: 2.8 },
-    { index: 1, text: "That was INSANE", start: 3.1, end: 5.5 },
-    { index: 2, text: "No way he survived that", start: 6.0, end: 8.4 },
-    { index: 3, text: "Triple kill right there", start: 9.0, end: 11.2 },
-    { index: 4, text: "Chat is going crazy right now", start: 12.0, end: 14.8 },
-    { index: 5, text: "This is the best clip of the stream", start: 55.0, end: 58.5 },
+    { index: 0, text: "AMD Instinct MI350P", start: 0.0, end: 2.8 },
+    { index: 1, text: "Built for AI acceleration", start: 3.2, end: 5.8 },
+    { index: 2, text: "Enterprise compute at scale", start: 7.0, end: 9.6 },
+    { index: 3, text: "Vision, audio, and transcript signals combined", start: 12.0, end: 15.0 },
+    { index: 4, text: "HRE keeps the important subject visible", start: 20.0, end: 23.4 },
   ],
   1: [
-    { index: 0, text: "Oh my god, this part...", start: 0.0, end: 3.0 },
-    { index: 1, text: "I've been waiting for this moment", start: 3.4, end: 6.0 },
-    { index: 2, text: "HERE WE GO", start: 7.0, end: 9.0 },
-    { index: 3, text: "The crowd is going wild", start: 28.0, end: 31.0 },
-    { index: 4, text: "YESSS! FINALLY!", start: 54.0, end: 57.0 },
-    { index: 5, text: "We are SO back", start: 57.5, end: 60.0 },
+    { index: 0, text: "The key benefit is throughput", start: 0.0, end: 2.8 },
+    { index: 1, text: "AI workloads need memory and bandwidth", start: 3.4, end: 6.3 },
+    { index: 2, text: "Qwen selected this as a strong technical moment", start: 8.0, end: 11.2 },
+    { index: 3, text: "Captions can be edited in the demo", start: 18.0, end: 21.0 },
   ],
   2: [
-    { index: 0, text: "Chat predicted this would happen", start: 0.0, end: 2.5 },
-    { index: 1, text: "I cannot believe this is real", start: 3.0, end: 6.2 },
-    { index: 2, text: "This is why I stream every day", start: 7.0, end: 9.5 },
-    { index: 3, text: "No script. This is 100% real.", start: 10.0, end: 13.0 },
-    { index: 4, text: "Clip it. Someone clip this.", start: 50.0, end: 53.0 },
+    { index: 0, text: "Enterprise AI infrastructure", start: 0.0, end: 2.7 },
+    { index: 1, text: "The model chooses the most useful 30 seconds", start: 4.0, end: 7.2 },
+    { index: 2, text: "Zoom and caption style vary by moment", start: 9.0, end: 12.0 },
+    { index: 3, text: "This preview uses pre-rendered demo output", start: 20.0, end: 23.0 },
   ],
 };
 
@@ -469,7 +472,9 @@ function EditorContent() {
   const clip = clips[activeClip];
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const rawUrl = clip ? (downloadUrls[clip.index] ?? clip.download_url) : "";
-  const clipDownloadUrl = rawUrl.startsWith("http") ? rawUrl : rawUrl ? `${apiBase}${rawUrl}` : "";
+  const clipDownloadUrl = isDemo
+    ? rawUrl
+    : rawUrl.startsWith("http") ? rawUrl : rawUrl ? `${apiBase}${rawUrl}` : "";
   const suggestedCaption = (clip as (typeof clip & { suggested_caption?: string }))?.suggested_caption;
   const currentCuts  = clip ? (cutRegions[clip.index] ?? []) : [];
   const clipDuration = clip ? clip.duration + (trimEnd[clip.index] ?? 0) - (trimStart[clip.index] ?? 0) : 60;
@@ -511,6 +516,11 @@ function EditorContent() {
           </span>
         </div>
       </nav>
+      {isDemo && (
+        <div className="border-b border-cyan-400/20 bg-cyan-400/10 px-5 py-2 text-center text-xs text-cyan-100">
+          {lbl.demoNotice}
+        </div>
+      )}
 
       {/* ── Main layout ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">

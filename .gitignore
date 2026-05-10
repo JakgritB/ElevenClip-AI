@@ -17,6 +17,8 @@ graphify-out/
 /tmp/
 *.wav
 *.mp4
+!frontend/public/demo/
+!frontend/public/demo/*.mp4
 *.ass
 *.log
 

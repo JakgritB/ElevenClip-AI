@@ -28,6 +28,7 @@ const T = {
     generateHRE: "Generate with HRE",
     tryDemo: "Try Demo",
     demoHint: "Demo mode — works without backend",
+    demoNotice: "Demo simulation: you can change settings and walk through the real flow, but generation uses pre-rendered ElevenClip AI results.",
     accessRequired: "Enter the demo access code to run real GPU generation.",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
@@ -44,6 +45,7 @@ const T = {
     generateHRE: "สร้างด้วย HRE",
     tryDemo: "ลองดูตัวอย่าง",
     demoHint: "โหมด Demo — ไม่ต้องเชื่อม backend",
+    demoNotice: "โหมดจำลอง: ปรับตั้งค่าและลองกดตาม flow จริงได้ แต่ผลลัพธ์ใช้คลิป ElevenClip AI ที่เราสร้างไว้แล้ว",
     accessRequired: "ใส่รหัสเดโมก่อน เพื่อรันของจริงบน GPU",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
@@ -60,6 +62,7 @@ const T = {
     generateHRE: "HRE 生成",
     tryDemo: "试用演示",
     demoHint: "演示模式 — 无需后端连接",
+    demoNotice: "模拟演示：可以调整设置并体验真实流程，但生成结果使用预先渲染的 ElevenClip AI 片段。",
     accessRequired: "请输入演示访问码以运行真实 GPU 生成。",
     hackathon: "AMD Developer Hackathon 2026 · Track 3: Vision & Multimodal AI",
   },
@@ -81,14 +84,14 @@ const FONT_MAP: Record<string, string> = {
 };
 
 const DEMO_STAGES = [
-  { stage: "download",  pct: 10, message: "Fetching sample video (yt-dlp)..." },
-  { stage: "audio",     pct: 22, message: "Extracting audio track..." },
-  { stage: "scenes",    pct: 35, message: "PySceneDetect — 24 scenes found" },
-  { stage: "transcribe",pct: 50, message: "Whisper ROCm — transcribing 3m 42s..." },
-  { stage: "vision",    pct: 65, message: "Qwen2.5-VL analyzing frames + transcript..." },
-  { stage: "scoring",   pct: 80, message: "score = 0.4×vision + 0.35×audio + 0.25×text" },
-  { stage: "cutting",   pct: 90, message: "Cutting 3 highlight clips via ffmpeg-amf..." },
-  { stage: "subtitles", pct: 96, message: "Generating ASS subtitles (pysubs2)..." },
+  { stage: "download",  pct: 10, message: "Demo simulation — loading the AMD Instinct source video..." },
+  { stage: "audio",     pct: 22, message: "Simulating audio extraction and speech alignment..." },
+  { stage: "scenes",    pct: 35, message: "Simulating scene detection — strongest moments selected" },
+  { stage: "transcribe",pct: 50, message: "Simulating Whisper transcript timing..." },
+  { stage: "vision",    pct: 65, message: "Simulating Qwen2.5-VL multimodal analysis..." },
+  { stage: "scoring",   pct: 80, message: "Simulating highlight scoring and HRE edit planning..." },
+  { stage: "cutting",   pct: 90, message: "Loading 3 pre-rendered ElevenClip AI demo clips..." },
+  { stage: "subtitles", pct: 96, message: "Preparing interactive editor preview..." },
   { stage: "done",      pct: 100, message: "" },
 ];
 
@@ -116,6 +119,7 @@ export default function HomePage() {
 
   const [step, setStep] = useState<Step>(1);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [channelDesc, setChannelDesc] = useState("");
 
   const [clipSettings, setClipSettings] = useState({
@@ -153,7 +157,7 @@ export default function HomePage() {
   const wsRef = useRef<WebSocket | null>(null);
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canProceedStep1 = !!videoFile;
+  const canProceedStep1 = demoMode || !!videoFile;
 
   useEffect(() => {
     const font = FONT_MAP[clipSettings.subtitle_language] ?? "Noto Sans";
@@ -183,6 +187,10 @@ export default function HomePage() {
   const handleGenerate = async () => {
     if (!canProceedStep1) return;
     setStep("generating");
+    if (demoMode) {
+      runMockDemo();
+      return;
+    }
     if (DEMO_ONLY_PUBLIC && !accessCode.trim()) {
       setProgress({ stage: "error", pct: 0, message: t.accessRequired });
       return;
@@ -226,45 +234,18 @@ export default function HomePage() {
   };
 
   const handleDemo = async () => {
-    setStep("generating");
-    if (DEMO_ONLY_PUBLIC && !accessCode.trim()) {
-      runMockDemo();
-      return;
-    }
-    try {
-      const settings: ProcessSettings = {
-        use_demo_video: true,
-        channel_description: "Gaming and reaction channel with funny moments",
-        clip_style: "funny",
-        target_duration: 60,
-        clip_count: 3,
-        clip_language: "auto",
-        subtitle_language: "english",
-        mode: "hre",
-        style_config: {},
-      };
-      const sessionId = await startProcessing(settings, undefined, accessCode);
-      localStorage.setItem("elevnclip_session", sessionId);
-
-      const ws = connectProgressWS(sessionId, (data) => {
-        setProgress(data);
-        if (data.stage === "done") { ws.close(); router.push(`/editor?session=${sessionId}`); }
-        if (data.stage === "error") ws.close();
-      });
-      wsRef.current = ws;
-
-      const poll = setInterval(async () => {
-        try {
-          const data = await getClips(sessionId);
-          if (data.last_progress) setProgress(data.last_progress);
-          if (data.status === "done") { clearInterval(poll); router.push(`/editor?session=${sessionId}`); }
-          if (data.status === "error") clearInterval(poll);
-        } catch { /* ignore */ }
-      }, 3000);
-      setTimeout(() => clearInterval(poll), 600_000);
-    } catch {
-      runMockDemo();
-    }
+    setDemoMode(true);
+    setVideoFile(null);
+    setChannelDesc("AMD Instinct product video for AI, HPC, and enterprise computing audiences");
+    setClipSettings({
+      clip_style: "educational",
+      target_duration: 30,
+      clip_count: 3,
+      clip_language: "auto",
+      subtitle_language: "english",
+      mode: "hre",
+    });
+    setStep(2);
   };
 
   return (
@@ -330,11 +311,17 @@ export default function HomePage() {
           )}
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 backdrop-blur-sm flex-1 min-h-0 overflow-y-auto flex flex-col">
+            {demoMode && step !== "generating" && (
+              <div className="mb-4 rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+                {t.demoNotice}
+              </div>
+            )}
+
             {step === 1 && (
               <>
                 <h2 className="text-lg font-semibold mb-4">{t.addVideo}</h2>
                 <VideoUpload
-                  onFileSelect={(f) => setVideoFile(f)}
+                  onFileSelect={(f) => { setDemoMode(false); setVideoFile(f); }}
                   onChannelDesc={setChannelDesc}
                   channelDesc={channelDesc}
                   accessCode={accessCode}
