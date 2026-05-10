@@ -184,7 +184,7 @@ def generate_subtitles(
             seg_end = min(seg_end, clip_duration)
 
         if display_mode == "sentence" or not words:
-            _add_sentence_event(subs, seg["text"], seg_start, seg_end, animation, style_config)
+            _add_text_events(subs, seg["text"], seg_start, seg_end, animation, style_config, display_mode)
         else:
             if animation == "karaoke":
                 _add_karaoke_line(subs, words, seg_start, seg_end, clip_start_offset, char_level)
@@ -192,11 +192,11 @@ def generate_subtitles(
                 before = len(subs)
                 _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config, clip_start_offset)
                 if len(subs) == before:
-                    _add_sentence_event(subs, seg["text"], seg_start, seg_end, animation, style_config)
+                    _add_text_events(subs, seg["text"], seg_start, seg_end, animation, style_config, display_mode)
 
     if len(subs) == 0 and transcript.get("text"):
         fallback_end = clip_duration if clip_duration is not None else 30.0
-        _add_sentence_event(subs, transcript["text"], 0.0, fallback_end, animation, style_config)
+        _add_text_events(subs, transcript["text"], 0.0, fallback_end, animation, style_config, display_mode)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     subs.save(str(output_path), encoding="utf-8")
@@ -224,6 +224,66 @@ def _add_sentence_event(subs, text, start, end, animation, style_config):
         text=tags + text,
     )
     subs.append(event)
+
+
+def _split_text_chunks(text: str, max_words: int, max_chars: int) -> list[str]:
+    text = re.sub(r"\s+", " ", text.strip())
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    sentences = re.split(r"(?<=[.!?。！？])\s+", text)
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        words = sentence.split()
+        if not words:
+            chunks.extend(sentence[i:i + max_chars].strip() for i in range(0, len(sentence), max_chars))
+            continue
+
+        current: list[str] = []
+        for word in words:
+            candidate = " ".join([*current, word])
+            if current and (len(current) >= max_words or len(candidate) > max_chars):
+                chunks.append(" ".join(current))
+                current = [word]
+            else:
+                current.append(word)
+        if current:
+            chunks.append(" ".join(current))
+
+    return [chunk for chunk in chunks if chunk]
+
+
+def _add_text_events(subs, text, start, end, animation, style_config, display_mode):
+    """Fallback for transcript segments without word timestamps.
+
+    Keep normal subtitles readable by splitting long transcript text into
+    short timed chunks instead of showing a whole paragraph at once.
+    """
+    if end <= start:
+        return
+
+    if display_mode == "word":
+        chunks = _split_text_chunks(text, max_words=3, max_chars=28)
+    else:
+        chunks = _split_text_chunks(text, max_words=8, max_chars=48)
+
+    if not chunks:
+        return
+
+    duration = end - start
+    slot = duration / len(chunks)
+    event_len = min(3.2, max(0.8, slot * 0.92))
+
+    for i, chunk in enumerate(chunks):
+        ev_start = start + slot * i
+        ev_end = min(end, ev_start + event_len)
+        if ev_end - ev_start < 0.25:
+            ev_end = min(end, ev_start + 0.25)
+        _add_sentence_event(subs, chunk, ev_start, ev_end, animation, style_config)
 
 
 def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config, clip_offset=0.0):
