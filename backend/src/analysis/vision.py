@@ -188,11 +188,13 @@ Respond ONLY with valid JSON — no markdown:
 }}
 
 Rules:
-- seg_idx==0: always zoom_direction=in, zoom_speed=fast (hook the viewer)
-- zoom IN fast: punchlines, reactions, peak energy
-- zoom IN slow: context, buildup, moderate energy
-- zoom OUT: reveals, breathing room after intensity
-- HOLD: stable content, text-heavy moments
+- Primary priority: keep the speaker/person visible. If a person exists, subject_bbox and zoom_anchor must target the person/face before products/screens.
+- If there is no person, target the product/object being discussed.
+- For key statements, punchlines, surprising claims, numbers, product names, or memorable highlight words:
+  zoom_direction=in, zoom_speed=fast or slow, subtitle_mode=word, subtitle_emphasis=punch, energy_level=high.
+- For normal explanatory speech:
+  zoom_direction=hold, zoom_speed=slow, subtitle_mode=sentence, subtitle_emphasis=calm, energy_level=medium or low.
+- Use zoom OUT only as breathing room after an intense/key moment.
 - subtitle WORD: short hooks, reactions, punchlines, important keywords
 - subtitle PHRASE: fast but understandable speech, 2-4 words at a time
 - subtitle SENTENCE: explanation, normal conversation, low/medium energy

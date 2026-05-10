@@ -415,6 +415,15 @@ def _normalise_analysis(analysis: dict, seg_idx: int, n_total: int) -> dict:
         if emphasis == "calm":
             emphasis = "punch"
 
+    if mode == "word" or moment in {"hook", "punchline", "reaction"}:
+        zoom_direction = "in"
+        zoom_speed = "fast" if energy == "high" else "slow"
+        emphasis = "punch" if emphasis == "calm" else emphasis
+    elif mode == "sentence" and moment in {"context", "transition"}:
+        zoom_direction = "hold"
+        zoom_speed = "slow"
+        emphasis = "calm"
+
     return {
         **an,
         "zoom_direction": zoom_direction,
@@ -728,10 +737,12 @@ def _subtitle_tag(plan: dict) -> tuple[str, int]:
 
     base = (
         f"{{\\an{alignment}\\pos({x},{y})\\1c{color}&\\fs{font_size}"
-        "\\b1\\bord5\\shad1\\q2}"
+        "\\b1\\bord5\\shad1\\q2\\fad(30,70)}"
     )
-    if emphasis in {"pop", "punch"} or mode == "word":
-        base += "{\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
+    if emphasis == "punch" or mode == "word":
+        base += "{\\fscx132\\fscy132\\frz-2\\t(0,140,\\fscx100\\fscy100\\frz0)}"
+    elif emphasis == "pop":
+        base += "{\\fscx118\\fscy118\\t(0,120,\\fscx100\\fscy100)}"
     return base, max_chars
 
 

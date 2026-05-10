@@ -19,7 +19,7 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, Header, Response, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from loguru import logger
 import httpx
@@ -53,9 +53,6 @@ MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "500"))
 REMOTE_BACKEND_URL = os.getenv("REMOTE_BACKEND_URL", "").rstrip("/")
 
-if not REMOTE_BACKEND_URL:
-    app.mount("/downloads", StaticFiles(directory=str(WORK_DIR)), name="downloads")
-
 # In-memory session store + WebSocket registry
 sessions: dict[str, dict] = {}
 ws_connections: dict[str, WebSocket] = {}
@@ -75,7 +72,10 @@ def _demo_headers(x_demo_key: Optional[str]) -> dict[str, str]:
 
 def _proxy_response(resp: httpx.Response) -> Response:
     content_type = resp.headers.get("content-type", "application/octet-stream")
-    return Response(content=resp.content, status_code=resp.status_code, media_type=content_type)
+    headers = {}
+    if disposition := resp.headers.get("content-disposition"):
+        headers["Content-Disposition"] = disposition
+    return Response(content=resp.content, status_code=resp.status_code, media_type=content_type, headers=headers)
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────
@@ -354,7 +354,8 @@ async def _run_pipeline(
 
         # ── 7. Extract clips (AMD AMF hardware encoder) ─────────────────
         await send_progress(session_id, "cutting", 81, f"Cutting {len(selected)} clips (h264_amf)...")
-        clips = await extract_all_clips_async(video_path, selected, session_dir, session_id, aspect_mode=settings.aspect_mode)
+        extract_aspect_mode = "safe_fit" if settings.mode == "hre" and settings.aspect_mode == "crop" else settings.aspect_mode
+        clips = await extract_all_clips_async(video_path, selected, session_dir, session_id, aspect_mode=extract_aspect_mode)
 
         # ── 8. Subtitles / HRE (all clips in parallel) ─────────────────
         await send_progress(session_id, "subtitles", 86, "Generating subtitles (parallel)...")
@@ -506,12 +507,26 @@ def _get_clip_or_404(session_id: str, clip_index: int) -> dict:
 
 # ─── vLLM management endpoints ────────────────────────────────────────────────
 
-if REMOTE_BACKEND_URL:
-    @app.get("/downloads/{file_path:path}")
-    async def proxy_download(file_path: str):
+@app.get("/downloads/{file_path:path}")
+async def download_file(file_path: str):
+    if REMOTE_BACKEND_URL:
         async with httpx.AsyncClient(timeout=600.0) as client:
             resp = await client.get(f"{REMOTE_BACKEND_URL}/downloads/{file_path}")
         return _proxy_response(resp)
+
+    target = (WORK_DIR / file_path).resolve()
+    work_root = WORK_DIR.resolve()
+    try:
+        target.relative_to(work_root)
+    except ValueError:
+        raise HTTPException(404, "File not found")
+    if not target.is_file():
+        raise HTTPException(404, "File not found")
+    return FileResponse(
+        path=str(target),
+        filename=target.name,
+        media_type="application/octet-stream",
+    )
 
 
 @app.get("/api/vllm/status")

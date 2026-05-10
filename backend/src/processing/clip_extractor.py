@@ -25,6 +25,18 @@ def _face_center_expr(face_bbox: list | None) -> str | None:
     return None
 
 
+def _safe_fit_filter() -> str:
+    """Keep the full source frame visible on a blurred 9:16 background."""
+    return (
+        "[0:v]split=2[bg][fg];"
+        "[bg]scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,boxblur=luma_radius=28:luma_power=1,"
+        "eq=brightness=-0.08:saturation=0.85[bg];"
+        "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vout]"
+    )
+
+
 def extract_clip(
     video_path: Path,
     start: float,
@@ -37,8 +49,9 @@ def extract_clip(
 ) -> Path:
     """Cut a clip and convert to 9:16 vertical (1080x1920) for TikTok.
 
-    face_bbox: [x1, y1, x2, y2] in pixels from Qwen2.5-VL — used to center
-    the crop on the face. Falls back to center crop when None.
+    face_bbox: [x1, y1, x2, y2] normalized from Qwen2.5-VL — used to center
+    the crop on the face when cropping. HRE can use safe_fit to avoid cutting
+    people out before the HRE zoom step runs.
     Uses AMD AMF hardware encoder when available.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,9 +59,12 @@ def extract_clip(
 
     # 9:16 vertical conversion filter
     vf_filters = []
+    filter_complex = None
     if vertical:
         aspect_mode = kwargs.get("aspect_mode", "crop")
-        if aspect_mode == "letterbox":
+        if aspect_mode == "safe_fit":
+            filter_complex = _safe_fit_filter()
+        elif aspect_mode == "letterbox":
             # Fit entire 16:9 frame into 9:16, black bars top+bottom
             vf_filters.append(
                 "scale=1080:1920:force_original_aspect_ratio=decrease,"
@@ -66,7 +82,9 @@ def extract_clip(
 
     for encoder in encoders:
         cmd = ["ffmpeg", "-y", "-ss", str(start), "-to", str(end), "-i", str(video_path)]
-        if vf_filters:
+        if filter_complex:
+            cmd += ["-filter_complex", filter_complex, "-map", "[vout]", "-map", "0:a?"]
+        elif vf_filters:
             cmd += ["-vf", ",".join(vf_filters)]
         cmd += ["-c:v", encoder, "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output_path)]
         result = subprocess.run(cmd, capture_output=True, text=True)

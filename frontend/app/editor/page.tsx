@@ -392,6 +392,32 @@ function EditorContent() {
     }
   };
 
+  const handleDownload = async () => {
+    if (!clipDownloadUrl || !clip) return;
+    const fileName = `clip_${clip.index}.mp4`;
+    try {
+      const res = await fetch(clipDownloadUrl);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      const a = document.createElement("a");
+      a.href = clipDownloadUrl;
+      a.download = fileName;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  };
+
   const handleSubEdit = async (clipIndex: number, eventIdx: number, text: string) => {
     setSubEvents((evts) => evts.map((e) => e.index === eventIdx ? { ...e, text } : e));
     if (isDemo) return;
@@ -561,14 +587,15 @@ function EditorContent() {
                   : <><RotateCcw size={14} /> {lbl.render}</>}
               </button>
             )}
-            <a
-              href={clipDownloadUrl || undefined}
-              download={!!clipDownloadUrl ? `clip_${(clip?.index ?? 0) + 1}.mp4` : undefined}
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={!clipDownloadUrl}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition text-white ${
-                clipDownloadUrl ? "bg-white/10 hover:bg-white/20 cursor-pointer" : "bg-white/5 opacity-40 cursor-not-allowed pointer-events-none"
+                clipDownloadUrl ? "bg-white/10 hover:bg-white/20 cursor-pointer" : "bg-white/5 opacity-40 cursor-not-allowed"
               }`}>
               <Download size={14} /> {lbl.download}
-            </a>
+            </button>
           </div>
 
           {/* AI reason */}
