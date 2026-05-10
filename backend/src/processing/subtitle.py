@@ -257,6 +257,36 @@ def _split_text_chunks(text: str, max_words: int, max_chars: int) -> list[str]:
     return [chunk for chunk in chunks if chunk]
 
 
+def _merge_chunks_to_count(chunks: list[str], target_count: int) -> list[str]:
+    """Merge adjacent chunks so fallback subtitles fit the available time."""
+    if target_count <= 0 or len(chunks) <= target_count:
+        return chunks
+
+    total_chars = sum(len(chunk) for chunk in chunks) + max(0, len(chunks) - 1)
+    target_chars = max(1, int(total_chars / target_count + 0.5))
+    merged: list[str] = []
+    cursor = 0
+
+    while cursor < len(chunks) and len(merged) < target_count:
+        slots_left_after_this = target_count - len(merged) - 1
+        current = [chunks[cursor]]
+        cursor += 1
+
+        while cursor < len(chunks) and (len(chunks) - cursor) > slots_left_after_this:
+            candidate = " ".join([*current, chunks[cursor]])
+            if len(candidate) > target_chars and current:
+                break
+            current.append(chunks[cursor])
+            cursor += 1
+
+        merged.append(" ".join(current))
+
+    if cursor < len(chunks):
+        merged[-1] = " ".join([merged[-1], *chunks[cursor:]])
+
+    return merged
+
+
 def _add_text_events(subs, text, start, end, animation, style_config, display_mode):
     """Fallback for transcript segments without word timestamps.
 
@@ -275,14 +305,22 @@ def _add_text_events(subs, text, start, end, animation, style_config, display_mo
         return
 
     duration = end - start
+    min_slot = 0.55 if display_mode == "word" else 1.10
+    max_events = max(1, int(duration / min_slot))
+    chunks = _merge_chunks_to_count(chunks, max_events)
+
     slot = duration / len(chunks)
-    event_len = min(3.2, max(0.8, slot * 0.92))
+    if len(chunks) == 1:
+        event_len = min(duration, 3.2 if display_mode == "word" else 4.0)
+    else:
+        event_len = max(0.35, min(slot - 0.06, 3.0 if display_mode == "word" else 3.8))
 
     for i, chunk in enumerate(chunks):
         ev_start = start + slot * i
-        ev_end = min(end, ev_start + event_len)
-        if ev_end - ev_start < 0.25:
-            ev_end = min(end, ev_start + 0.25)
+        next_start = start + slot * (i + 1) if i < len(chunks) - 1 else end
+        ev_end = min(end, next_start - 0.04, ev_start + event_len)
+        if ev_end <= ev_start:
+            continue
         _add_sentence_event(subs, chunk, ev_start, ev_end, animation, style_config)
 
 
@@ -346,6 +384,32 @@ def subtitle_events_from_ass(ass_path: Path) -> list[dict]:
             "end": round(event.end / 1000, 3),
         })
     return events
+
+
+def normalize_subtitle_timing(ass_path: Path, gap_ms: int = 40) -> Path:
+    """Clamp ASS events so two normal subtitles never render at the same time."""
+    if not ass_path.exists():
+        return ass_path
+
+    subs = SSAFile.load(str(ass_path))
+    changed = False
+    for idx, event in enumerate(subs):
+        if event.end <= event.start:
+            event.end = event.start + 250
+            changed = True
+
+        if idx >= len(subs) - 1:
+            continue
+
+        next_event = subs[idx + 1]
+        latest_end = next_event.start - gap_ms
+        if event.end > latest_end:
+            event.end = max(event.start + 1, latest_end)
+            changed = True
+
+    if changed:
+        subs.save(str(ass_path), encoding="utf-8")
+    return ass_path
 
 
 def _add_karaoke_line(subs, words, seg_start, seg_end, clip_offset, char_level):

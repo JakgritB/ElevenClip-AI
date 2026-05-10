@@ -36,6 +36,7 @@ from src.processing.subtitle import (
     generate_subtitles,
     update_subtitle_event,
     apply_global_style_override,
+    normalize_subtitle_timing,
     subtitle_events_from_ass,
 )
 from src.processing.high_retention import apply_hre
@@ -396,6 +397,7 @@ async def _run_pipeline(
             else:
                 def _gen_and_burn(cp=clip_path, ap=ass_path, tr=clip_transcript, cs=clip["start"], ce=clip["end"], fp=final_path):
                     generate_subtitles(tr, ap, settings.style_config, clip_start_offset=cs, clip_end_offset=ce)
+                    normalize_subtitle_timing(ap)
                     burn_subtitles(cp, ap, fp)
                 subtitle_tasks.append(loop.run_in_executor(None, _gen_and_burn))
 
@@ -420,6 +422,8 @@ async def _run_pipeline(
         if settings.mode == "normal":
             for item in final_clips:
                 ass = item.get("ass_path")
+                if ass:
+                    normalize_subtitle_timing(Path(ass))
                 events = subtitle_events_from_ass(Path(ass)) if ass else []
                 item["subtitle_events"] = events
                 item["subtitle_event_count"] = len(events)
@@ -450,6 +454,7 @@ async def get_clips(session_id: str):
     for clip in session.get("clips", []):
         ass = clip.get("ass_path")
         if ass:
+            normalize_subtitle_timing(Path(ass))
             events = subtitle_events_from_ass(Path(ass))
             clip["subtitle_events"] = events
             clip["subtitle_event_count"] = len(events)
@@ -504,6 +509,7 @@ async def render_clip(session_id: str, clip_index: int):
     final_path = clip_path.parent / f"{clip_path.stem}_edited.mp4"
 
     if ass_path and ass_path.exists():
+        normalize_subtitle_timing(ass_path)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: burn_subtitles(clip_path, ass_path, final_path))
     else:
