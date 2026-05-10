@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { HexColorPicker } from "react-colorful";
-import { getClips, patchSubtitle, patchGlobalStyle, renderClip, type ClipResult, type StyleConfig } from "@/lib/api";
+import { getClips, patchSubtitle, patchGlobalStyle, renderClip, type ClipResult, type StyleConfig, type SubtitleEvent } from "@/lib/api";
 import {
   Download, RotateCcw, ChevronLeft, Loader2, Bot, Scissors, CheckCircle2,
   Copy, Check, FileText, Palette, Scissors as ScissorsIcon, Plus, X,
@@ -16,7 +16,7 @@ const DEMO_CLIP_URLS = [
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type SubEvent = { index: number; text: string; start: number; end: number };
+type SubEvent = SubtitleEvent;
 type SubLineStyle = {
   font_family?: string; font_size?: number;
   primary_color?: string; secondary_color?: string;
@@ -50,6 +50,7 @@ const L = {
     wordMode: "Word", sentenceMode: "Sentence",
     resetGlobal: "Reset to global style",
     noSubsHre: "No subtitles in HRE mode — AI handles styling automatically.",
+    noSubEvents: "No subtitle lines were generated for this clip. Try re-running with sentence subtitles or render again after the backend update.",
     cut: "Cut",
     demoSession: "Demo session", waitRender: "Waiting for render", close: "Close",
     preview: "PREVIEW",
@@ -75,6 +76,7 @@ const L = {
     wordMode: "คำต่อคำ", sentenceMode: "ประโยค",
     resetGlobal: "รีเซ็ตเป็นสไตล์ทั่วไป",
     noSubsHre: "HRE mode ไม่มีซับ — AI จัดการสไตล์ให้อัตโนมัติ",
+    noSubEvents: "คลิปนี้ยังไม่มีบรรทัดซับ ลองรันใหม่ด้วยซับแบบประโยค หรือเรนเดอร์อีกครั้งหลังอัปเดต backend",
     cut: "จุดตัด",
     demoSession: "Demo session", waitRender: "รอการเรนเดอร์", close: "ปิด",
     preview: "PREVIEW",
@@ -100,6 +102,7 @@ const L = {
     wordMode: "逐词", sentenceMode: "句子",
     resetGlobal: "重置为全局样式",
     noSubsHre: "HRE模式无字幕 — AI自动处理样式",
+    noSubEvents: "此片段未生成字幕行。请用句子字幕重新运行，或在后端更新后重新渲染。",
     cut: "切割",
     demoSession: "演示会话", waitRender: "等待渲染", close: "关闭",
     preview: "预览",
@@ -339,9 +342,13 @@ function EditorContent() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (isDemo) setSubEvents(MOCK_SUBS[activeClip] ?? []);
+    if (isDemo) {
+      setSubEvents(MOCK_SUBS[activeClip] ?? []);
+    } else {
+      setSubEvents(clips[activeClip]?.subtitle_events ?? []);
+    }
     setExpandedSubLine(null);
-  }, [activeClip, isDemo]);
+  }, [activeClip, clips, isDemo]);
 
   const loadClips = async () => {
     if (isDemo) {
@@ -360,6 +367,7 @@ function EditorContent() {
       const urls: Record<number, string> = {};
       result.clips.forEach((c) => { urls[c.index] = c.download_url; });
       setDownloadUrls(urls);
+      setSubEvents(result.clips[0]?.subtitle_events ?? []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load clips");
     } finally {
@@ -808,6 +816,11 @@ function SubtitleTimelinePanel({
 
       {/* Events list */}
       <div className="space-y-2">
+        {events.length === 0 && (
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
+            {lbl.noSubEvents}
+          </div>
+        )}
         {events.map((evt) => {
           const styleKey   = `${clipIndex}-${evt.index}`;
           const lineStyle  = subStyles[styleKey] ?? {};

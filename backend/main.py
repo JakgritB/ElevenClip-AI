@@ -32,7 +32,12 @@ from src.analysis.scene_detector import detect_scenes, sample_frames
 from src.analysis.vision import analyze_scenes_batch_async
 from src.analysis.highlight_scorer import score_scenes, select_top_clips
 from src.processing.clip_extractor import extract_all_clips_async, burn_subtitles
-from src.processing.subtitle import generate_subtitles, update_subtitle_event, apply_global_style_override
+from src.processing.subtitle import (
+    generate_subtitles,
+    update_subtitle_event,
+    apply_global_style_override,
+    subtitle_events_from_ass,
+)
 from src.processing.high_retention import apply_hre
 
 app = FastAPI(title="ElevenClip AI", version="1.0.0")
@@ -389,8 +394,8 @@ async def _run_pipeline(
                         apply_hre(cp, cd, tr, fp)
                 ))
             else:
-                def _gen_and_burn(cp=clip_path, ap=ass_path, tr=clip_transcript, cs=clip["start"], fp=final_path):
-                    generate_subtitles(tr, ap, settings.style_config, clip_start_offset=cs)
+                def _gen_and_burn(cp=clip_path, ap=ass_path, tr=clip_transcript, cs=clip["start"], ce=clip["end"], fp=final_path):
+                    generate_subtitles(tr, ap, settings.style_config, clip_start_offset=cs, clip_end_offset=ce)
                     burn_subtitles(cp, ap, fp)
                 subtitle_tasks.append(loop.run_in_executor(None, _gen_and_burn))
 
@@ -411,6 +416,13 @@ async def _run_pipeline(
 
         if subtitle_tasks:
             await asyncio.gather(*subtitle_tasks)
+
+        if settings.mode == "normal":
+            for item in final_clips:
+                ass = item.get("ass_path")
+                events = subtitle_events_from_ass(Path(ass)) if ass else []
+                item["subtitle_events"] = events
+                item["subtitle_event_count"] = len(events)
 
         sessions[session_id] = {"status": "done", "clips": final_clips}
         await send_progress(session_id, "done", 100, f"Done! {len(final_clips)} clips ready for download.")
@@ -435,6 +447,12 @@ async def get_clips(session_id: str):
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
+    for clip in session.get("clips", []):
+        ass = clip.get("ass_path")
+        if ass:
+            events = subtitle_events_from_ass(Path(ass))
+            clip["subtitle_events"] = events
+            clip["subtitle_event_count"] = len(events)
     return session
 
 

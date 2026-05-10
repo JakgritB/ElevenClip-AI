@@ -6,6 +6,7 @@ Handles Thai/Chinese character-level splitting.
 """
 from pathlib import Path
 from typing import Optional
+import re
 import pysubs2
 from pysubs2 import SSAFile, SSAEvent, SSAStyle
 from loguru import logger
@@ -114,6 +115,7 @@ def generate_subtitles(
     output_path: Path,
     style_config: dict,
     clip_start_offset: float = 0.0,
+    clip_end_offset: Optional[float] = None,
 ) -> Path:
     """Generate .ass subtitle file from transcript.
 
@@ -122,6 +124,7 @@ def generate_subtitles(
         output_path: Where to save the .ass file
         style_config: Dict with font/color/animation settings from frontend
         clip_start_offset: Shift all timestamps (for sub-clips from longer video)
+        clip_end_offset: Optional absolute end timestamp for clipping events
     """
     subs = SSAFile()
     subs.info["PlayResX"] = "1080"
@@ -164,6 +167,10 @@ def generate_subtitles(
 
     segments = transcript.get("segments", [])
 
+    clip_duration = None
+    if clip_end_offset is not None:
+        clip_duration = max(0.1, clip_end_offset - clip_start_offset)
+
     for seg in segments:
         words = seg.get("words", [])
         seg_end = seg["end"] - clip_start_offset
@@ -171,6 +178,10 @@ def generate_subtitles(
             continue  # segment ends before clip starts — skip entirely
 
         seg_start = max(0.0, seg["start"] - clip_start_offset)
+        if clip_duration is not None:
+            if seg_start >= clip_duration:
+                continue
+            seg_end = min(seg_end, clip_duration)
 
         if display_mode == "sentence" or not words:
             _add_sentence_event(subs, seg["text"], seg_start, seg_end, animation, style_config)
@@ -178,7 +189,14 @@ def generate_subtitles(
             if animation == "karaoke":
                 _add_karaoke_line(subs, words, seg_start, seg_end, clip_start_offset, char_level)
             else:
+                before = len(subs)
                 _add_word_events(subs, words, seg_start, seg_end, animation, char_level, style_config, clip_start_offset)
+                if len(subs) == before:
+                    _add_sentence_event(subs, seg["text"], seg_start, seg_end, animation, style_config)
+
+    if len(subs) == 0 and transcript.get("text"):
+        fallback_end = clip_duration if clip_duration is not None else 30.0
+        _add_sentence_event(subs, transcript["text"], 0.0, fallback_end, animation, style_config)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     subs.save(str(output_path), encoding="utf-8")
@@ -187,6 +205,9 @@ def generate_subtitles(
 
 
 def _add_sentence_event(subs, text, start, end, animation, style_config):
+    text = text.strip()
+    if not text or end <= start:
+        return
     tags = ""
     if animation == "fade":
         fi = style_config.get("fade_in_ms", 200)
@@ -200,7 +221,7 @@ def _add_sentence_event(subs, text, start, end, animation, style_config):
     event = SSAEvent(
         start=pysubs2.make_time(s=start),
         end=pysubs2.make_time(s=end),
-        text=tags + text.strip(),
+        text=tags + text,
     )
     subs.append(event)
 
@@ -218,8 +239,10 @@ def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, sty
     for i, unit in enumerate(unit_list):
         start = unit["start"] - clip_offset
         end = (unit["end"] - clip_offset) if unit["end"] > unit["start"] else start + 0.3
-        if start < 0:
+        if end <= 0 or start >= seg_end:
             continue
+        start = max(0.0, start)
+        end = min(seg_end, max(start + 0.25, end))
 
         tags = ""
         if animation == "fade":
@@ -238,6 +261,31 @@ def _add_word_events(subs, words, seg_start, seg_end, animation, char_level, sty
             text=tags + unit["word"].strip(),
         )
         subs.append(event)
+
+
+def _strip_ass_tags(text: str) -> str:
+    """Remove ASS override tags before sending editable text to the UI."""
+    return re.sub(r"\{[^{}]*\}", "", text).strip()
+
+
+def subtitle_events_from_ass(ass_path: Path) -> list[dict]:
+    """Return subtitle events in seconds for the editor timeline."""
+    if not ass_path.exists():
+        return []
+
+    subs = SSAFile.load(str(ass_path))
+    events = []
+    for idx, event in enumerate(subs):
+        text = _strip_ass_tags(event.text)
+        if not text:
+            continue
+        events.append({
+            "index": idx,
+            "text": text,
+            "start": round(event.start / 1000, 3),
+            "end": round(event.end / 1000, 3),
+        })
+    return events
 
 
 def _add_karaoke_line(subs, words, seg_start, seg_end, clip_offset, char_level):

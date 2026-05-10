@@ -49,6 +49,13 @@ export interface StyleConfig {
   subtitle_language?: string;
 }
 
+export interface SubtitleEvent {
+  index: number;
+  text: string;
+  start: number;
+  end: number;
+}
+
 export interface ClipResult {
   index: number;
   start: number;
@@ -58,6 +65,8 @@ export interface ClipResult {
   download_url: string;
   raw_url: string;
   ass_path?: string;
+  subtitle_events?: SubtitleEvent[];
+  subtitle_event_count?: number;
   vision_analysis?: Record<string, unknown>;
   highlight_reason?: string;
 }
